@@ -1,0 +1,12 @@
+normalized_data/
+preprocessed_data/
+preprocessed_data_gaeun/
+preprocessed_data_prev/
+preprocessed_data_prev3/
+preprocessed_mels/
+raw_data/
+raw_norm_wavs/
+raw_wavs_dhs/
+dhs_output/
+hifigan/
+output/

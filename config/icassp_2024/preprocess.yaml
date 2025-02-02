@@ -1,0 +1,31 @@
+dataset: "icassp_2024"
+
+path:
+  corpus_path: "/media/gaeun/fee580d1-6954-462b-bdaf-3b8ccc4254311/data/015.Emotion_and_Style_TTS"
+  raw_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_data/emo_kr_22050"
+  preprocessed_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050"
+  mfa_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_data/emo_kr_22050_mfa"
+
+preprocessing:
+  val_size: 2000
+  test_size: 500
+  text:
+    text_cleaners: ["korean_cleaners"]
+    language: "kr"
+  audio:
+    sampling_rate: 22050
+    max_wav_value: 32768.0
+  stft:
+    filter_length: 1024
+    hop_length: 256
+    win_length: 1024
+  mel:
+    n_mel_channels: 80
+    mel_fmin: 0
+    mel_fmax: 8000 # please set to 8000 for HiFi-GAN vocoder, set to null for MelGAN vocoder
+  pitch:
+    feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
+    normalization: True
+  energy:
+    feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
+    normalization: True
