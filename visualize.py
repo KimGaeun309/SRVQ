@@ -70,15 +70,28 @@ if __name__ == "__main__":
     model = get_model(args, configs, device, train=False)
 
     styles = []
-    for file_path in file_path_list:
+    # for file_path in file_path_list:
+    for i in range(len(file_path_list)):
+        file_path = file_path_list[i]
+        emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
         print("file_path", file_path)
         # Mel
         mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{file_path[:3]}-mel-{file_path}.npy')
         mel = torch.from_numpy(mel).float().to(device)
         mel = mel.unsqueeze(0)
 
+        pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{file_path}_pitch.npy"
+        energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{file_path}_energy.npy"
+            
+        pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
+        energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
+
         # style 추출
-        style, _, _, codebooks = model.style_extractor(mel)
+        # style, _, _, codebooks = model.style_extractor(mel, emotion, pitch_mel, energy_mel)
+
+        z_mel, z_pitch, z_energy, cls_loss = model.ref_enc(mel, emotion, pitch_mel, energy_mel)
+        style, _, _, codebooks = model.style_extractor(z_mel, z_pitch, z_energy, cls_loss)
+
         styles.append(style.cpu().data[:, :])  # 전체 임베딩 (예: 768 차원 등)
 
     emotions = np.array(emotions)
