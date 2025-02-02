@@ -527,7 +527,7 @@ class VectorQuantizer_kmeans(nn.Module):
             return
 
         # ---- 1) n_e개 클러스터를 찾는다 (기존: num_dead 만큼이 아니라 n_e로)
-        data_np = data.cpu().numpy()
+        data_np = data.detach().cpu().numpy()
         kmeans = KMeans(n_clusters=self.n_e, random_state=0, max_iter=max_iter)
         kmeans.fit(data_np)
         new_centers = kmeans.cluster_centers_  # shape = (n_e, e_dim)
@@ -564,6 +564,13 @@ class VectorQuantizer_kmeans(nn.Module):
             f"with {num_dead} new centers that are farthest from used codes.")
 
 
+
+    def random_restart(self):
+        #  randomly restart all dead codes below threshold with random code in codebook
+        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
+        rand_codes = torch.randperm(self.n_e)[0:len(dead_codes)]
+        with torch.no_grad():
+            self.embedding.weight[dead_codes] = self.embedding.weight[rand_codes]
 
 
     # ------------------------------------------------------------------
@@ -758,9 +765,7 @@ class ReferenceEncoderSRVQ3(torch.nn.Module):
         emotion_preds_e = self.emotion_classifier(z_energy)
         cls_loss_e = torch.nn.functional.cross_entropy(emotion_preds_e, emotions)
 
-        cls_loss = cls_loss_m + cls_loss_p + cls_loss_e
-
-        print('cls_loss', cls_loss)
+        cls_loss = (cls_loss_m + cls_loss_p + cls_loss_e) / 3
 
         return z_mel, z_pitch, z_energy, cls_loss
 
@@ -806,11 +811,13 @@ class SRVQ3WithNeutralization(torch.nn.Module):
         # Combine indices for reference
         indices = [indices_m, indices_p, indices_e]
 
-        print("commit_loss", commit_loss)
+        # print("commit_loss", commit_loss, "cls_loss", cls_loss)
 
-        vq_loss = commit_loss
+        vq_loss = commit_loss + cls_loss
 
         codebooks = [quantized_m, quantized_p, quantized_e]
+
+        print("indices", indices)
 
         return quantized, vq_loss, indices[0][0], codebooks
 

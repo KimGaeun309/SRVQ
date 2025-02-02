@@ -211,7 +211,7 @@ class FastSpeech2(nn.Module):
                 ref_embs = self.gst(mels)
                 style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
             else:
-                print("emotions", emotions)
+                
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
                 z_mel, z_pitch, z_energy, cls_loss = self.ref_enc(mels, emotions=emotions, p_mel=pitch_mel, e_mel=energy_mel)
                 if init_flag:
@@ -222,7 +222,7 @@ class FastSpeech2(nn.Module):
 
                 style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(z_mel, z_pitch, z_energy, cls_loss) 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
-                print('style_ref_embs', style_ref_embs.shape)
+                
 
                 if init_flag:
                     self.style_extractor.RVQ1.vq_layers[1].init_codebook_kmeans(style_ref_embs[:, :128])
