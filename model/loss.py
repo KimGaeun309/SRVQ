@@ -90,21 +90,23 @@ class FastSpeech2Loss(nn.Module):
         style_loss = self.mae_loss(style_pred_embs, style_ref_embs) * 10 # lamda scale
         total_style_loss = style_loss + guided_loss
 
-        emotions_pred = min_encoding_indices
-        # Clssifier
-        emotions_pred = F.one_hot(emotions_pred, num_classes=7).float().squeeze()
+        classifier_loss = 0
+        for min_encoding_indice in min_encoding_indices:
+            emotions_pred = min_encoding_indice
+            # Clssifier
+            emotions_pred = F.one_hot(emotions_pred, num_classes=7).float().squeeze()
 
-        # emotions_pred = min_encoding_indices.float().squeeze()
-        emotions = inputs[3].long()
+            # emotions_pred = min_encoding_indices.float().squeeze()
+            emotions = inputs[3].long()
 
-        # print("emotions", emotions)
+            # print("emotions", emotions)
 
-        # print("emotions_pred ", emotions_pred)
-        # print("emotions ", emotions)
+            # print("emotions_pred ", emotions_pred)
+            # print("emotions ", emotions)
 
-        classifier_loss = self.criterion(emotions_pred, emotions) * 0.1
+            classifier_loss += self.criterion(emotions_pred, emotions) * 0.1
 
-        # print("-----------------------")
+            # print("-----------------------")
 
         total_loss = (
             mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss 
@@ -119,5 +121,5 @@ class FastSpeech2Loss(nn.Module):
             style_loss, 
             guided_loss,
             vq_loss,
-            # classifier_loss,
+            classifier_loss,
         )

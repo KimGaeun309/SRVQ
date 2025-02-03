@@ -144,7 +144,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                         message1 = "Step {}/{}, ".format(step, total_step)
-                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}".format( 
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}".format( 
                             ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
                             *losses_
                         )
@@ -194,6 +194,9 @@ def train(rank, args, configs, batch_size, num_gpus):
                         outer_bar.write(message)
 
                         model.train()
+
+                        if losses[9].mean() > 0.5:
+                            init_flag = True   
 
                         # if epoch < 5:
                         #     init_flag = True
@@ -269,7 +272,7 @@ def train(rank, args, configs, batch_size, num_gpus):
             
             # pitch_mel = pad_2D(pitch_mel)
             # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
-            # energy_mel = pad_2D(energy_mel)
+            # energy_mel = pad_2D(energy_mel)print
             # energy_mel = torch.from_numpy(energy_mel).to('cpu')
 
             z_mel, z_pitch, z_energy, cls_loss = model.ref_enc(mel, emotion, pitch_mel, energy_mel)
@@ -289,13 +292,11 @@ def train(rank, args, configs, batch_size, num_gpus):
         model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_pitchs)
         model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_energies)
 
-        # model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(styles[:, :128])
-        # model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(styles[:, 256:384])
-        # model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(styles[:, 512:640])
+        model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
+        model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
+        model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
         
-        model.style_extractor.RVQ1.vq_layers[1].random_restart()
-        model.style_extractor.RVQ2.vq_layers[1].random_restart()
-        model.style_extractor.RVQ3.vq_layers[1].random_restart()
+        
         
 
 

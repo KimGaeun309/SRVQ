@@ -730,7 +730,7 @@ class ResidualVQ2_kmeans(torch.nn.Module):
         # 모든 단계의 quantized 코드를 concatenate
         final_quantized = torch.cat(quantized_codes, dim=1)
 
-        return final_quantized, total_vq_loss, indices_list, perplexities
+        return final_quantized, total_vq_loss, indices_list[0], perplexities
 
 class ReferenceEncoderSRVQ3(torch.nn.Module):
     def __init__(self, e_dim
@@ -817,9 +817,9 @@ class SRVQ3WithNeutralization(torch.nn.Module):
 
         codebooks = [quantized_m, quantized_p, quantized_e]
 
-        print("indices", indices)
+        # print("indices", indices)
 
-        return quantized, vq_loss, indices[0][0], codebooks
+        return quantized, vq_loss, indices, codebooks
 
 if __name__ == "__main__":
     ref_embs = torch.rand((7, 256))

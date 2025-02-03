@@ -225,9 +225,9 @@ class FastSpeech2(nn.Module):
                 
 
                 if init_flag:
-                    self.style_extractor.RVQ1.vq_layers[1].init_codebook_kmeans(style_ref_embs[:, :128])
-                    self.style_extractor.RVQ2.vq_layers[1].init_codebook_kmeans(style_ref_embs[:, 256:384])
-                    self.style_extractor.RVQ3.vq_layers[1].init_codebook_kmeans(style_ref_embs[:, 512:640])
+                    self.style_extractor.RVQ1.vq_layers[1].init_codebook_kmeans(z_mel - style_ref_embs[:, :128])
+                    self.style_extractor.RVQ2.vq_layers[1].init_codebook_kmeans(z_pitch - style_ref_embs[:, 256:384])
+                    self.style_extractor.RVQ3.vq_layers[1].init_codebook_kmeans(z_energy - style_ref_embs[:, 512:640])
 
             # style_ref_embs shape : [16, 256*3]
 
