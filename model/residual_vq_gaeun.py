@@ -842,7 +842,7 @@ class SRVQ3WithNeutralization(torch.nn.Module):
 
         vq_loss = commit_loss + cls_loss
 
-        codebooks = [quantized_m, quantized_p, quantized_e]
+        codebooks = [quantized_m, quantized_p, quantized_e, quantized_m + quantized_p + quantized_e]
 
         # print("indices", indices)
 
