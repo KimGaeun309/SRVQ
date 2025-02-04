@@ -229,7 +229,9 @@ class FastSpeech2(nn.Module):
                     self.style_extractor.RVQ2.vq_layers[1].init_codebook_kmeans(z_pitch - style_ref_embs[:, 256:384])
                     self.style_extractor.RVQ3.vq_layers[1].init_codebook_kmeans(z_energy - style_ref_embs[:, 512:640])
 
-            # style_ref_embs shape : [16, 256*3]
+            # style_ref_embs shape : [16, 256*3]   
+
+            orig_style_ref_embs = style_ref_embs
 
             style_ref_embs = self.style_extract_fc(style_ref_embs) 
             # self.style_extract_fc : 256*3 -> 256 Linear Layer
@@ -242,7 +244,7 @@ class FastSpeech2(nn.Module):
             prosody_embedding = style_ref_embs.unsqueeze(1) + positions
 
         else:
-            style_ref_embs, vq_loss, min_encoding_indices = None, None, None
+            style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
             style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
             if self.model_config["residual_vq"]["num_rvq"] == 4:
                 style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
@@ -252,6 +254,8 @@ class FastSpeech2(nn.Module):
                 codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]] # vq3
             elif self.model_config["residual_vq"]["num_rvq"] == 2:
                 style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
+
+            
             style_pred_embs = self.style_pred_fc(style_pred_embs)
 
             output = output + style_pred_embs.unsqueeze(1)
@@ -320,5 +324,6 @@ class FastSpeech2(nn.Module):
             style_pred_embs,
             guided_loss,
             vq_loss,
-            min_encoding_indices
+            min_encoding_indices,
+            orig_style_ref_embs, # Edit!
         )
