@@ -191,7 +191,7 @@ class FastSpeech2Loss(nn.Module):
             anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
 
             if anchor is not None:
-                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.2
+                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
             
             # # Clssifier
             # emotions_pred = min_encoding_indice
