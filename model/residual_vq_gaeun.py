@@ -832,6 +832,235 @@ class SRVQ3(torch.nn.Module):
         return quantized, commit_loss, indices_1, codebooks
 
 
+<<<<<<< HEAD
+=======
+class VectorQuantizer_kmeans(nn.Module):
+
+    def __init__(self, n_e=7, e_dim=128, beta=0.25, usage_threshold=1.0e-9):
+
+        super().__init__()
+
+        self.n_e = n_e
+        self.e_dim = e_dim
+        self.beta = beta
+        self.usage_threshold = usage_threshold
+
+        # 코드북 임베딩
+        self.embedding = nn.Embedding(self.n_e, self.e_dim)
+
+        # 일단 랜덤 초기화 (혹은 0 초기화 등)
+        self.embedding.weight.data.uniform_(-1.0 / self.n_e, 1.0 / self.n_e)
+
+        # usage 버퍼: 각 코드가 얼마나 선택되었는지 추적
+        # persistent=False -> state_dict에는 저장되지 않음
+        self.register_buffer('usage', torch.ones(self.n_e), persistent=False)
+
+        self.perplexity = None
+        self.loss = None
+    # ------------------------------------------------------------------
+
+    # 1) 코드북을 k-means로 초기화하는 함수
+
+    # ------------------------------------------------------------------
+
+    def init_codebook_kmeans(self, data, max_iter=100):
+
+        """
+
+        data: Tensor of shape (N, e_dim)
+
+            초기화 시 사용될 샘플들(가능하면 충분히 큰 N)
+
+        """
+
+        data_np = data.detach().cpu().numpy() # sklearn은 numpy array 사용
+
+        # n_clusters = self.n_e 로 맞춰서 실행
+
+        kmeans = KMeans(n_clusters=self.n_e, random_state=0, max_iter=max_iter)
+
+        kmeans.fit(data_np)
+
+        # cluster_centers_ shape = (n_e, e_dim)
+
+        new_centers = kmeans.cluster_centers_
+
+
+
+        # 코드북에 반영
+
+        with torch.no_grad():
+
+            self.embedding.weight[:] = torch.from_numpy(new_centers).to(self.embedding.weight.device, dtype=self.embedding.weight.dtype)
+
+        print(f"[init_codebook_kmeans] Updated codebook with k-means centers")
+
+
+    # ------------------------------------------------------------------
+
+    # 2) dead codes를 k-means로 부분 재초기화
+
+    # ------------------------------------------------------------------
+    def reset_dead_codes_kmeans(self, data, max_iter=100):
+        """
+        data: Tensor shape (M, e_dim)
+            이번 epoch (혹은 일정 주기) 동안 모은 latent 샘플
+        """
+        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
+        num_dead = len(dead_codes)
+        if num_dead == 0:
+            print("[reset_dead_codes_kmeans] No dead codes. Skip.")
+            return
+
+        # ---- 1) n_e개 클러스터를 찾는다 (기존: num_dead 만큼이 아니라 n_e로)
+        data_np = data.detach().cpu().numpy()
+        kmeans = KMeans(n_clusters=self.n_e, random_state=0, max_iter=max_iter)
+        kmeans.fit(data_np)
+        new_centers = kmeans.cluster_centers_  # shape = (n_e, e_dim)
+
+        # ---- 2) '사용 중'인 코드들(usage >= threshold)을 찾는다
+        #       (만약 threshold가 너무 낮으면, usage가 0이 아닌 코드 전부를 사용 중이라고 볼 수도 있음)
+        used_codes = torch.nonzero(self.usage >= self.usage_threshold).squeeze(1)
+        if len(used_codes) == 0:
+            # 만약 '사용 중' 코드가 없다면, 그냥 dead code만큼 임의로 뽑아 할당해도 됨
+            print("[reset_dead_codes_kmeans] No used codes found. Using first num_dead centers.")
+            selected_idx = list(range(num_dead))
+        else:
+            # ---- 3) 새로 찾은 각 center가, 기존 '사용 중' codebook들과 얼마나 떨어져 있는지 계산
+            #         (가장 가까운 used code와의 최소 거리로 측정)
+            centers_t = torch.from_numpy(new_centers).to(
+                self.embedding.weight.device, dtype=self.embedding.weight.dtype
+            )  # (n_e, e_dim)
+            used_w = self.embedding.weight[used_codes]  # (num_used, e_dim)
+
+            # 거리 계산: cdist(centers, used_w), shape = (n_e, num_used)
+            dist_matrix = torch.cdist(centers_t, used_w, p=2)
+            # 각 center별로 "가장 가까운 used code"와의 거리 (min-dist)
+            min_dist_to_used, _ = dist_matrix.min(dim=1)  # shape = (n_e,)
+
+            # ---- 4) min_dist_to_used가 큰 순으로 정렬하여, dead code 개수만큼 선택
+            sorted_idx = torch.argsort(min_dist_to_used, descending=True)
+            selected_idx = sorted_idx[:num_dead]
+
+        # ---- 5) dead_codes 자리에, 골라진 center들을 할당
+        with torch.no_grad():
+            self.embedding.weight[dead_codes] = centers_t[selected_idx]
+
+        print(f"[reset_dead_codes_kmeans] Replaced {num_dead} dead codes "
+            f"with {num_dead} new centers that are farthest from used codes.")
+
+
+
+    def random_restart(self):
+        #  randomly restart all dead codes below threshold with random code in codebook
+        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
+        rand_codes = torch.randperm(self.n_e)[0:len(dead_codes)]
+        with torch.no_grad():
+            self.embedding.weight[dead_codes] = self.embedding.weight[rand_codes]
+
+
+    # ------------------------------------------------------------------
+
+    # 기존 로직들
+
+    # ------------------------------------------------------------------
+
+    def dequantize(self, z):
+
+        """ (indices -> embedding vectors) """
+
+        z_flattened = z.view(-1, self.e_dim)
+
+        z_q = self.embedding(z_flattened).view(z.shape)
+
+        return z_q
+
+
+
+    def update_usage(self, min_enc):
+
+        # min_enc: (B, 1) 형태의 index 텐서
+
+        self.usage[min_enc] += 1
+
+        self.usage /= 2.0 # decay
+
+
+
+    def reset_usage(self):
+
+        self.usage.zero_()
+
+        print("[reset_usage] usage buffer is now zeroed.")
+
+
+
+    def forward(self, z, return_indices=False):
+
+        """
+
+        예시상, 입력 z가 이미 (batch, e_dim)인 것으로 가정(사용자 코드에 맞춰 조정 필요).
+
+        만약 2D/3D 형태라면 shape 변환 과정을 추가해야 함.
+
+        """
+
+        # z shape: (B, e_dim) 가정
+
+        z = z.unsqueeze(1)
+        z = z.permute(0, 2, 1).contiguous()
+        z_flattened = z.view(-1, self.e_dim)
+
+
+        # 거리 계산: (z - e)^2 = z^2 + e^2 - 2 z e
+
+        #   (B, 1) + (n_e,) - 2 * (B, e_dim)*(e_dim, n_e)
+
+        d = torch.sum(z_flattened ** 2, dim=1, keepdim=True) \
+            + torch.sum(self.embedding.weight ** 2, dim=1) \
+            - 2 * torch.matmul(z_flattened, self.embedding.weight.t())
+
+        # argmin	
+        min_encoding_indices = torch.argmin(d, dim=1).unsqueeze(1) # shape (B,1)
+
+        # one-hot
+        min_encodings = torch.zeros(
+            min_encoding_indices.shape[0], self.n_e,
+            dtype=z.dtype, device=z.device
+        )
+
+        min_encodings.scatter_(1, min_encoding_indices, 1)
+
+        # 양자화된 벡터 z_q
+        z_q = torch.matmul(min_encodings, self.embedding.weight)
+        z_q = z_q.view(z.shape)
+
+        # usage 업데이트
+        self.update_usage(min_encoding_indices)
+
+
+
+        # VQ-VAE loss
+        #  - codebook 손실: mean(||z_q.detach() - z||^2)
+        #  - commitment cost: beta * mean(||z_q - z.detach()||^2)
+
+        self.loss = torch.mean((z_q.detach() - z) ** 2) \
+                    + self.beta * torch.mean((z_q - z.detach()) ** 2)
+
+        # Straight-Through Estimator
+        z_q = z + (z_q - z).detach()
+
+        # perplexity
+        e_mean = torch.mean(min_encodings, dim=0)
+
+        self.perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
+
+        z_q = z_q.permute(0, 1, 2).contiguous()
+        z_q = z_q.squeeze(-1)
+
+        return z_q, self.loss, min_encoding_indices, self.perplexity
+
+>>>>>>> parent of 07a9c59 (debug triplet_loss + add greedy_restart)
 
 class ResidualVQ2_kmeans(torch.nn.Module):
     def __init__(
