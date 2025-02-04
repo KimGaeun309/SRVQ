@@ -195,7 +195,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                         model.train()
 
-                        if losses[9].mean() > 0.5:
+                        if losses[9].mean() > 0.4:
                             init_flag = True   
 
                         # if epoch < 5:
@@ -236,6 +236,7 @@ def train(rank, args, configs, batch_size, num_gpus):
             if rank == 0:
                 inner_bar.update(1)
         epoch += 1
+        
 
         val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
 
@@ -289,14 +290,27 @@ def train(rank, args, configs, batch_size, num_gpus):
         z_pitchs = torch.cat(z_pitchs, dim=0)
         z_energies = torch.cat(z_energies, dim=0)
         styles = torch.cat(styles, dim=0)
+        
+        vq_layers_list = [model.style_extractor.RVQ1.vq_layers[0], model.style_extractor.RVQ1.vq_layers[1], model.style_extractor.RVQ2.vq_layers[0], model.style_extractor.RVQ2.vq_layers[1], model.style_extractor.RVQ3.vq_layers[0], model.style_extractor.RVQ3.vq_layers[1]]
 
-        model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
-        model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_pitchs)
-        model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_energies)
+        vq_inputs_list = [z_mels, z_pitchs, z_energies, z_mels - styles[:, :128], z_pitchs - styles[:, 256:384], z_energies - styles[:, 512:640]]
 
-        model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
-        model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
-        model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
+        
+        for ii in range(len(vq_layers_list)):
+            if vq_layers_list[ii].dead_codes_count() < (7 / 2):
+                vq_layers_list[ii].greedy_restart()
+            else:
+                vq_layers_list[ii].reset_dead_codes_kmeans(vq_inputs_list[ii])
+
+
+
+        # model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
+        # model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_pitchs)
+        # model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_energies)
+
+        # model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
+        # model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
+        # model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
         
         
         

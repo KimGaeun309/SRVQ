@@ -109,6 +109,8 @@ if __name__ == "__main__":
     data_x_6 = styles[:, 640:768].numpy()
     data_x_7 = styles[:, :].numpy()  # 전체
 
+    data_x_8 = model.style_extract_fc(styles)
+
     def run_tsne(data, perplexity=20, n_iter=2000):
         if data.shape[1] == 0:
             return None  # 혹시 slice 구간이 잘못되어 0차원이 되면 무시

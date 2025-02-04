@@ -185,6 +185,7 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
         _,
         _,
         _,
+        _,
         _
     ) = test_output
 
