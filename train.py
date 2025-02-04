@@ -187,6 +187,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                         )
 
                     if step % val_step == 0:
+                        torch.cuda.empty_cache()
                         model.eval()
                         message = evaluate(device, model, step, configs, val_logger, vocoder, losses)
                         with open(os.path.join(val_log_path, "log.txt"), "a") as f:
@@ -236,7 +237,6 @@ def train(rank, args, configs, batch_size, num_gpus):
             if rank == 0:
                 inner_bar.update(1)
         epoch += 1
-        
 
         val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
 
@@ -250,9 +250,7 @@ def train(rank, args, configs, batch_size, num_gpus):
         val_basenames = []
         emotions = []
         styles = []
-        z_mels = []
-        z_pitchs = []
-        z_energies = []
+        ref_embs = []
 
         for i in range(len(val_infos)):
             if i % 25 != 0: continue
@@ -267,42 +265,44 @@ def train(rank, args, configs, batch_size, num_gpus):
             mel = torch.from_numpy(mel).float().to(device)
             mel = mel.unsqueeze(0)
 
-            pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{val_basename}_pitch.npy"
-            energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{val_basename}_energy.npy"
+            # pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{val_basename}_pitch.npy"
+            # energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{val_basename}_energy.npy"
             
-            pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
-            energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
+            # pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
+            # energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
             
             # pitch_mel = pad_2D(pitch_mel)
             # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
             # energy_mel = pad_2D(energy_mel)print
             # energy_mel = torch.from_numpy(energy_mel).to('cpu')
 
-            z_mel, z_pitch, z_energy, cls_loss = model.ref_enc(mel, emotion, pitch_mel, energy_mel)
-            style, _, _, codebooks = model.style_extractor(z_mel, z_pitch, z_energy, cls_loss)
+            ref_emb, cls_loss = model.ref_enc(mel, emotion)
+            style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)
 
-            z_mels.append(z_mel)
-            z_pitchs.append(z_pitch)
-            z_energies.append(z_energy)
+            ref_embs.append(ref_emb)
             styles.append(style)
 
-        z_mels = torch.cat(z_mels, dim=0)
-        z_pitchs = torch.cat(z_pitchs, dim=0)
-        z_energies = torch.cat(z_energies, dim=0)
+        ref_embs = torch.cat(ref_embs, dim=0)
         styles = torch.cat(styles, dim=0)
         
-        vq_layers_list = [model.style_extractor.RVQ1.vq_layers[0], model.style_extractor.RVQ1.vq_layers[1], model.style_extractor.RVQ2.vq_layers[0], model.style_extractor.RVQ2.vq_layers[1], model.style_extractor.RVQ3.vq_layers[0], model.style_extractor.RVQ3.vq_layers[1]]
+        torch.cuda.empty_cache()
 
-        vq_inputs_list = [z_mels, z_pitchs, z_energies, z_mels - styles[:, :128], z_pitchs - styles[:, 256:384], z_energies - styles[:, 512:640]]
-
+        if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
+            model.style_extractor.vq_layers[0].greedy_restart()
+        else:
+            model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
         
-        for ii in range(len(vq_layers_list)):
-            if vq_layers_list[ii].dead_codes_count() < (7 / 2):
-                vq_layers_list[ii].greedy_restart()
-            else:
-                vq_layers_list[ii].reset_dead_codes_kmeans(vq_inputs_list[ii])
+        if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
+            model.style_extractor.vq_layers[1].greedy_restart()
+        else:
+            model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
+        
+        if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
+            model.style_extractor.vq_layers[2].greedy_restart()
+        else:
+            model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
-
+        torch.cuda.empty_cache()
 
         # model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
         # model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_pitchs)
