@@ -290,18 +290,36 @@ def train(rank, args, configs, batch_size, num_gpus):
         z_pitchs = torch.cat(z_pitchs, dim=0)
         z_energies = torch.cat(z_energies, dim=0)
         styles = torch.cat(styles, dim=0)
+
+        if model.style_extractor.RVQ1.vq_layers[0].dead_codes_count() < (7/2):
+            model.style_extractor.RVQ1.vq_layers[0].greedy_restart()
+        else:
+            model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
+
+        if model.style_extractor.RVQ1.vq_layers[1].dead_codes_count() < (7/2):
+            model.style_extractor.RVQ1.vq_layers[1].greedy_restart()
+        else:
+            model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_pitchs)
         
-        vq_layers_list = [model.style_extractor.RVQ1.vq_layers[0], model.style_extractor.RVQ1.vq_layers[1], model.style_extractor.RVQ2.vq_layers[0], model.style_extractor.RVQ2.vq_layers[1], model.style_extractor.RVQ3.vq_layers[0], model.style_extractor.RVQ3.vq_layers[1]]
+        if model.style_extractor.RVQ2.vq_layers[0].dead_codes_count() < (7/2):
+            model.style_extractor.RVQ2.vq_layers[0].greedy_restart()
+        else:
+            model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_energies)
 
-        vq_inputs_list = [z_mels, z_pitchs, z_energies, z_mels - styles[:, :128], z_pitchs - styles[:, 256:384], z_energies - styles[:, 512:640]]
+        if model.style_extractor.RVQ2.vq_layers[1].dead_codes_count() < (7/2):
+            model.style_extractor.RVQ2.vq_layers[1].greedy_restart()
+        else:
+            model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
 
-        
-        for ii in range(len(vq_layers_list)):
-            if vq_layers_list[ii].dead_codes_count() < (7 / 2):
-                vq_layers_list[ii].greedy_restart()
-            else:
-                vq_layers_list[ii].reset_dead_codes_kmeans(vq_inputs_list[ii])
+        if model.style_extractor.RVQ3.vq_layers[0].dead_codes_count() < (7/2):
+            model.style_extractor.RVQ3.vq_layers[0].greedy_restart()
+        else:
+            model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
 
+        if model.style_extractor.RVQ3.vq_layers[1].dead_codes_count() < (7/2):
+            model.style_extractor.RVQ3.vq_layers[1].greedy_restart()
+        else:
+            model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
 
 
         # model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
