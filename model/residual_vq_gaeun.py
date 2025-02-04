@@ -9,21 +9,7 @@ from sklearn.cluster import KMeans
 
 from typing import Sequence
 
-# from vector_quantize_pytorch import VectorQuantize
-
-
-class EmotionClassifier(torch.nn.Module):
-    def __init__(self, input_dim: int, num_classes: int):
-        super().__init__()
-        self.classifier = torch.nn.Sequential(
-            torch.nn.Linear(input_dim, num_classes),
-            torch.nn.Softmax(dim=-1),
-        )
-
-    def forward(self, x):
-        return self.classifier(x)
-    
-
+from vector_quantize_pytorch import VectorQuantize
 
 class ReferenceEncoder(torch.nn.Module): # Original RefEnc
     """Reference encoder module.
@@ -123,115 +109,16 @@ class ReferenceEncoder(torch.nn.Module): # Original RefEnc
 
         return ref_embs
 
+class EmotionClassifier(torch.nn.Module):
+    def __init__(self, input_dim: int, num_classes: int):
+        super().__init__()
+        self.classifier = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, num_classes),
+            torch.nn.Softmax(dim=-1),
+        )
 
-class ReferenceEncoder_cls(torch.nn.Module): # Original RefEnc
-    """Reference encoder module.
-
-    This module is reference encoder introduced in `Style Tokens: Unsupervised Style
-    Modeling, Control and Transfer in End-to-End Speech Synthesis`.
-
-    .. _`Style Tokens: Unsupervised Style Modeling, Control and Transfer in End-to-End
-        Speech Synthesis`: https://arxiv.org/abs/1803.09017
-
-    Args:
-        idim (int, optional): Dimension of the input mel-spectrogram.
-        conv_layers (int, optional): The number of conv layers in the reference encoder.
-        conv_chans_list: (Sequence[int], optional):
-            List of the number of channels of conv layers in the referece encoder.
-        conv_kernel_size (int, optional):
-            Kernel size of conv layers in the reference encoder.
-        conv_stride (int, optional):
-            Stride size of conv layers in the reference encoder.
-        gru_layers (int, optional): The number of GRU layers in the reference encoder.
-        gru_units (int, optional): The number of GRU units in the reference encoder.
-
-    """
-
-    def __init__(
-        self,
-        idim=80,
-        conv_layers: int = 6,
-        conv_chans_list: Sequence[int] = (32, 32, 64, 64, 128, 128),
-        conv_kernel_size: int = 3,
-        conv_stride: int = 2,
-        gru_layers: int = 1,
-        gru_units: int = 128,
-        e_dim: int = 256
-    ):
-        """Initilize reference encoder module."""
-        super(ReferenceEncoder_cls, self).__init__()
-
-        # check hyperparameters are valid
-        assert conv_kernel_size % 2 == 1, "kernel size must be odd."
-        assert (
-            len(conv_chans_list) == conv_layers
-        ), "the number of conv layers and length of channels list must be the same."
-
-        convs = []
-        padding = (conv_kernel_size - 1) // 2
-        for i in range(conv_layers):
-            conv_in_chans = 1 if i == 0 else conv_chans_list[i - 1]
-            conv_out_chans = conv_chans_list[i]
-            convs += [
-                torch.nn.Conv2d(
-                    conv_in_chans,
-                    conv_out_chans,
-                    kernel_size=conv_kernel_size,
-                    stride=conv_stride,
-                    padding=padding,
-                    # Do not use bias due to the following batch norm
-                    bias=False,
-                ),
-                torch.nn.BatchNorm2d(conv_out_chans),
-                torch.nn.ReLU(inplace=True),
-            ]
-        self.convs = torch.nn.Sequential(*convs)
-
-        self.conv_layers = conv_layers
-        self.kernel_size = conv_kernel_size
-        self.stride = conv_stride
-        self.padding = padding
-
-        # get the number of GRU input units
-        gru_in_units = idim
-        for i in range(conv_layers):
-            gru_in_units = (
-                gru_in_units - conv_kernel_size + 2 * padding
-            ) // conv_stride + 1
-        gru_in_units *= conv_out_chans
-        self.gru = torch.nn.GRU(gru_in_units, gru_units, gru_layers, batch_first=True)
-
-        self.emotion_classifier = EmotionClassifier(e_dim, 7)
-
-    def forward(self, speech: torch.Tensor, emotions) -> torch.Tensor:
-        """Calculate forward propagation.
-
-        Args:
-            speech (Tensor): Batch of padded target features (B, Lmax, idim).
-
-        Returns:
-            Tensor: Reference embedding (B, gru_units)
-
-        """
-        batch_size = speech.size(0)
-        xs = speech.unsqueeze(1)  # (B, 1, Lmax, idim)
-        hs = self.convs(xs).transpose(1, 2)  # (B, Lmax', conv_out_chans, idim')
-        # NOTE(kan-bayashi): We need to care the length?
-        time_length = hs.size(1)
-        hs = hs.contiguous().view(batch_size, time_length, -1)  # (B, Lmax', gru_units)
-        self.gru.flatten_parameters()
-        _, ref_embs = self.gru(hs)  # (gru_layers, batch_size, gru_units)
-        ref_embs = ref_embs[-1]  # (batch_size, gru_units)
-
-        # print("ref_embs", ref_embs.shape)
-
-        emotion_preds = self.emotion_classifier(ref_embs)
-
-        # print('emotion_preds', emotion_preds)
-
-        cls_loss = torch.nn.functional.cross_entropy(emotion_preds, emotions)
-
-        return ref_embs, cls_loss
+    def forward(self, x):
+        return self.classifier(x)
 
 class ReferenceEncoderDynamic(torch.nn.Module):
     """Modified ReferenceEncoder for dynamically sized 1D vector inputs."""
@@ -302,293 +189,7 @@ class ReferenceEncoderDynamic(torch.nn.Module):
         return ref_embs[-1]  # Return last layer's output: [B, gru_units]    
 
 
-class VectorQuantizer_kmeans(nn.Module):
 
-    def __init__(self, n_e=7, e_dim=128, beta=0.25, usage_threshold=1.0e-9):
-
-        super().__init__()
-
-        self.n_e = n_e
-        self.e_dim = e_dim
-        self.beta = beta
-        self.usage_threshold = usage_threshold
-
-        # 코드북 임베딩
-        self.embedding = nn.Embedding(self.n_e, self.e_dim)
-
-        # 일단 랜덤 초기화 (혹은 0 초기화 등)
-        self.embedding.weight.data.uniform_(-1.0 / self.n_e, 1.0 / self.n_e)
-
-        # usage 버퍼: 각 코드가 얼마나 선택되었는지 추적
-        # persistent=False -> state_dict에는 저장되지 않음
-        self.register_buffer('usage', torch.ones(self.n_e), persistent=False)
-
-        self.perplexity = None
-        self.loss = None
-    # ------------------------------------------------------------------
-
-    # 1) 코드북을 k-means로 초기화하는 함수
-
-    # ------------------------------------------------------------------
-
-    def init_codebook_kmeans(self, data, max_iter=100):
-
-        """
-
-        data: Tensor of shape (N, e_dim)
-
-            초기화 시 사용될 샘플들(가능하면 충분히 큰 N)
-
-        """
-
-        data_np = data.detach().cpu().numpy() # sklearn은 numpy array 사용
-
-        # n_clusters = self.n_e 로 맞춰서 실행
-
-        kmeans = KMeans(n_clusters=self.n_e, random_state=0, max_iter=max_iter)
-
-        kmeans.fit(data_np)
-
-        # cluster_centers_ shape = (n_e, e_dim)
-
-        new_centers = kmeans.cluster_centers_
-
-
-
-        # 코드북에 반영
-
-        with torch.no_grad():
-
-            self.embedding.weight[:] = torch.from_numpy(new_centers).to(self.embedding.weight.device, dtype=self.embedding.weight.dtype)
-
-        print(f"[init_codebook_kmeans] Updated codebook with k-means centers")
-
-
-    # ------------------------------------------------------------------
-
-    # 2) dead codes를 k-means로 부분 재초기화
-
-    # ------------------------------------------------------------------
-    def reset_dead_codes_kmeans(self, data, max_iter=100):
-        """
-        data: Tensor shape (M, e_dim)
-            이번 epoch (혹은 일정 주기) 동안 모은 latent 샘플
-        """
-        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
-        num_dead = len(dead_codes)
-        if num_dead == 0:
-            print("[reset_dead_codes_kmeans] No dead codes. Skip.")
-            return
-
-        # ---- 1) n_e개 클러스터를 찾는다 (기존: num_dead 만큼이 아니라 n_e로)
-        data_np = data.detach().cpu().numpy()
-        kmeans = KMeans(n_clusters=self.n_e, random_state=0, max_iter=max_iter)
-        kmeans.fit(data_np)
-        new_centers = kmeans.cluster_centers_  # shape = (n_e, e_dim)
-
-        # ---- 2) '사용 중'인 코드들(usage >= threshold)을 찾는다
-        #       (만약 threshold가 너무 낮으면, usage가 0이 아닌 코드 전부를 사용 중이라고 볼 수도 있음)
-        used_codes = torch.nonzero(self.usage >= self.usage_threshold).squeeze(1)
-        if len(used_codes) == 0:
-            # 만약 '사용 중' 코드가 없다면, 그냥 dead code만큼 임의로 뽑아 할당해도 됨
-            print("[reset_dead_codes_kmeans] No used codes found. Using first num_dead centers.")
-            selected_idx = list(range(num_dead))
-        else:
-            # ---- 3) 새로 찾은 각 center가, 기존 '사용 중' codebook들과 얼마나 떨어져 있는지 계산
-            #         (가장 가까운 used code와의 최소 거리로 측정)
-            centers_t = torch.from_numpy(new_centers).to(
-                self.embedding.weight.device, dtype=self.embedding.weight.dtype
-            )  # (n_e, e_dim)
-            used_w = self.embedding.weight[used_codes]  # (num_used, e_dim)
-
-            # 거리 계산: cdist(centers, used_w), shape = (n_e, num_used)
-            dist_matrix = torch.cdist(centers_t, used_w, p=2)
-            # 각 center별로 "가장 가까운 used code"와의 거리 (min-dist)
-            min_dist_to_used, _ = dist_matrix.min(dim=1)  # shape = (n_e,)
-
-            # ---- 4) min_dist_to_used가 큰 순으로 정렬하여, dead code 개수만큼 선택
-            sorted_idx = torch.argsort(min_dist_to_used, descending=True)
-            selected_idx = sorted_idx[:num_dead]
-
-        # ---- 5) dead_codes 자리에, 골라진 center들을 할당
-        with torch.no_grad():
-            self.embedding.weight[dead_codes] = centers_t[selected_idx]
-
-        print(f"[reset_dead_codes_kmeans] Replaced {num_dead} dead codes "
-            f"with {num_dead} new centers that are farthest from used codes.")
-
-
-
-    def random_restart(self):
-        #  randomly restart all dead codes below threshold with random code in codebook
-        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
-        rand_codes = torch.randperm(self.n_e)[0:len(dead_codes)]
-        with torch.no_grad():
-            self.embedding.weight[dead_codes] = self.embedding.weight[rand_codes]
-
-
-    # ------------------------------------------------------------------
-
-    # 기존 로직들
-
-    # ------------------------------------------------------------------
-
-    def dequantize(self, z):
-
-        """ (indices -> embedding vectors) """
-
-        z_flattened = z.view(-1, self.e_dim)
-
-        z_q = self.embedding(z_flattened).view(z.shape)
-
-        return z_q
-
-
-
-    def update_usage(self, min_enc):
-
-        # min_enc: (B, 1) 형태의 index 텐서
-
-        self.usage[min_enc] += 1
-
-        self.usage /= 2.0 # decay
-
-
-
-    def reset_usage(self):
-
-        self.usage.zero_()
-
-        print("[reset_usage] usage buffer is now zeroed.")
-
-
-
-    def forward(self, z, return_indices=False):
-
-        """
-
-        예시상, 입력 z가 이미 (batch, e_dim)인 것으로 가정(사용자 코드에 맞춰 조정 필요).
-
-        만약 2D/3D 형태라면 shape 변환 과정을 추가해야 함.
-
-        """
-
-        # z shape: (B, e_dim) 가정
-
-        z = z.unsqueeze(1)
-        z = z.permute(0, 2, 1).contiguous()
-        z_flattened = z.view(-1, self.e_dim)
-
-
-        # 거리 계산: (z - e)^2 = z^2 + e^2 - 2 z e
-
-        #   (B, 1) + (n_e,) - 2 * (B, e_dim)*(e_dim, n_e)
-
-        d = torch.sum(z_flattened ** 2, dim=1, keepdim=True) \
-            + torch.sum(self.embedding.weight ** 2, dim=1) \
-            - 2 * torch.matmul(z_flattened, self.embedding.weight.t())
-
-        # argmin	
-        min_encoding_indices = torch.argmin(d, dim=1).unsqueeze(1) # shape (B,1)
-
-        # one-hot
-        min_encodings = torch.zeros(
-            min_encoding_indices.shape[0], self.n_e,
-            dtype=z.dtype, device=z.device
-        )
-
-        min_encodings.scatter_(1, min_encoding_indices, 1)
-
-        # 양자화된 벡터 z_q
-        z_q = torch.matmul(min_encodings, self.embedding.weight)
-        z_q = z_q.view(z.shape)
-
-        # usage 업데이트
-        self.update_usage(min_encoding_indices)
-
-
-
-        # VQ-VAE loss
-        #  - codebook 손실: mean(||z_q.detach() - z||^2)
-        #  - commitment cost: beta * mean(||z_q - z.detach()||^2)
-
-        self.loss = torch.mean((z_q.detach() - z) ** 2) \
-                    + self.beta * torch.mean((z_q - z.detach()) ** 2)
-
-        # Straight-Through Estimator
-        z_q = z + (z_q - z).detach()
-
-        # perplexity
-        e_mean = torch.mean(min_encodings, dim=0)
-
-        self.perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
-
-        z_q = z_q.permute(0, 1, 2).contiguous()
-        z_q = z_q.squeeze(-1)
-
-        return z_q, self.loss, min_encoding_indices, self.perplexity
-
-
-class ResidualVQ_kmeans(torch.nn.Module):
-    def __init__(
-        self,
-        n_e: int = 7,
-        e_dim: int = 256,
-        num_vq: int = 3,
-        beta: float = 0.2,
-    ):
-        super(ResidualVQ_kmeans, self).__init__()
-        self.n_e = n_e
-        self.e_dim = e_dim
-        self.num_vq = num_vq
-        self.beta = beta
-
-        # VQ 레이어 반복적으로 생성
-        self.vq_layers = torch.nn.ModuleList([
-            VectorQuantizer_kmeans(
-                n_e=n_e,
-                e_dim=e_dim,
-            )
-            for _ in range(num_vq)
-        ])
-
-    def forward(self, input_vector: torch.Tensor, cls_loss) -> torch.Tensor:
-        residual = input_vector
-        vq_losses = []
-        perplexities = []
-        quantized_codes = []
-        indices_list = []
-
-        # 각 단계의 VQ Layer 처리
-        for layer in self.vq_layers:
-            quantized, vq_loss, indices, _ = layer(residual)
-            
-            vq_losses.append(vq_loss)
-
-            # Residual 갱신
-            residual = residual - quantized.detach()
-
-            # Perplexity 계산
-            with torch.no_grad():
-                e_mean = torch.mean(F.one_hot(indices, num_classes=layer.n_e).float(), dim=0)
-                perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
-                perplexities.append(perplexity)
-
-            # 출력 저장
-            quantized_codes.append(quantized)
-            indices_list.append(indices)
-
-        # 모든 단계의 손실 합산
-        total_vq_loss = sum(vq_losses) + cls_loss
-
-        # 모든 단계의 quantized 코드를 concatenate
-        final_quantized = torch.cat(quantized_codes, dim=1)
-
-        codebooks = [quantized_codes[0], quantized_codes[1], quantized_codes[2], quantized_codes[0] + quantized_codes[1] + quantized_codes[2]]
-
-
-
-        return final_quantized, total_vq_loss, indices_list, codebooks
 
 class ResidualVQ(torch.nn.Module):
     def __init__(
@@ -629,8 +230,23 @@ class ResidualVQ(torch.nn.Module):
             dim=e_dim, codebook_size=n_e, codebook_dim=e_dim, kmeans_init=True,
         )
 
+        self.emotion_classifier = EmotionClassifier(e_dim, 7)
 
-    def forward(self, ref_embs: torch.Tensor, cls_loss) -> torch.Tensor:
+
+    def forward(self, speech: torch.Tensor, emotions) -> torch.Tensor:
+        ref_embs = self.ref_enc(speech) # [16, H, W=80] -> [16, 256]
+
+        # emotion_preds = self.emotion_classifier(ref_embs)
+
+        # print('emotion_preds', emotion_preds)
+
+        # classifier_loss = torch.nn.functional.cross_entropy(emotion_preds, emotions)
+
+        # print("RVQ cls_loss", classifier_loss)
+        # print("----------------")
+
+        
+
         residual = ref_embs
 
         # First VQ layer
@@ -654,7 +270,7 @@ class ResidualVQ(torch.nn.Module):
         # Total VQ loss
         vq_loss = loss_1 + loss_2 + loss_3
 
-        vq_loss += cls_loss
+        # vq_loss += classifier_loss
 
         # Collect indices and quantized outputs for each layer
         indices_list = [indices_1, indices_2, indices_3]
@@ -832,8 +448,6 @@ class SRVQ3(torch.nn.Module):
         return quantized, commit_loss, indices_1, codebooks
 
 
-<<<<<<< HEAD
-=======
 class VectorQuantizer_kmeans(nn.Module):
 
     def __init__(self, n_e=7, e_dim=128, beta=0.25, usage_threshold=1.0e-9):
@@ -958,6 +572,32 @@ class VectorQuantizer_kmeans(nn.Module):
         with torch.no_grad():
             self.embedding.weight[dead_codes] = self.embedding.weight[rand_codes]
 
+    def dead_codes_count(self):
+        return len(torch.nonzero(self.usage < self.usage_threshold).squeeze(1))
+
+    def greedy_restart(self):
+        """
+        가장 사용 빈도가 높은 코드들로 dead codes를 초기화하는 함수.
+        usage_threshold보다 작은 dead codes를 찾아,
+        usage가 가장 높은 코드들(Top-K)의 임베딩으로 교체한다.
+        """
+        # 1) dead_codes 탐색
+        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
+        
+        # 2) 사용 빈도가 높은 순서대로 정렬 후, dead_codes 개수만큼 가져오기
+        # argsort()로 내림차순 정렬하면 usage가 큰 인덱스부터 순서대로 정렬되므로
+        # 앞에서 dead_codes 개수(len(dead_codes))만큼 선택
+        top_codes = torch.argsort(self.usage, descending=True)[:len(dead_codes)]
+        
+        # 3) 임베딩 교체
+        with torch.no_grad():
+            self.embedding.weight[dead_codes] = self.embedding.weight[top_codes]
+
+        print(f"[reset_dead_codes_greedy] Replaced {len(dead_codes)} dead codes "
+            f"with most frequently used codes.")
+
+    
+
 
     # ------------------------------------------------------------------
 
@@ -1060,7 +700,6 @@ class VectorQuantizer_kmeans(nn.Module):
 
         return z_q, self.loss, min_encoding_indices, self.perplexity
 
->>>>>>> parent of 07a9c59 (debug triplet_loss + add greedy_restart)
 
 class ResidualVQ2_kmeans(torch.nn.Module):
     def __init__(
