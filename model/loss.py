@@ -182,7 +182,7 @@ class FastSpeech2Loss(nn.Module):
         total_style_loss = style_loss + guided_loss
 
         
-        classifier_loss = torch.zeros_like(mel_loss)
+        classifier_loss = 0
         # for min_encoding_indice in min_encoding_indices:
         orig_style_ref_embs = [orig_style_ref_embs[:, :256], orig_style_ref_embs[:, 256:512], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:]]
         
@@ -203,7 +203,7 @@ class FastSpeech2Loss(nn.Module):
             # classifier_loss += self.criterion(emotions_pred, emotions) * 0.05
 
             
-        
+
         total_loss = (
             mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss 
         )

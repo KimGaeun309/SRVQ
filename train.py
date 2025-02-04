@@ -196,7 +196,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                         model.train()
 
-                        if losses[9].mean() > 0.4:
+                        if losses[9].mean() > 0.5:
                             init_flag = True   
 
                         # if epoch < 5:
@@ -284,6 +284,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
         ref_embs = torch.cat(ref_embs, dim=0)
         styles = torch.cat(styles, dim=0)
+<<<<<<< HEAD
         
         torch.cuda.empty_cache()
 
@@ -311,6 +312,16 @@ def train(rank, args, configs, batch_size, num_gpus):
         # model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
         # model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
         # model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
+=======
+
+        model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
+        model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_pitchs)
+        model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_energies)
+
+        model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
+        model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
+        model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
+>>>>>>> parent of 07a9c59 (debug triplet_loss + add greedy_restart)
         
         
         
