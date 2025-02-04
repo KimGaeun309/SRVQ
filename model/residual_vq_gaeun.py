@@ -572,32 +572,6 @@ class VectorQuantizer_kmeans(nn.Module):
         with torch.no_grad():
             self.embedding.weight[dead_codes] = self.embedding.weight[rand_codes]
 
-    def dead_codes_count(self):
-        return len(torch.nonzero(self.usage < self.usage_threshold).squeeze(1))
-
-    def greedy_restart(self):
-        """
-        가장 사용 빈도가 높은 코드들로 dead codes를 초기화하는 함수.
-        usage_threshold보다 작은 dead codes를 찾아,
-        usage가 가장 높은 코드들(Top-K)의 임베딩으로 교체한다.
-        """
-        # 1) dead_codes 탐색
-        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
-        
-        # 2) 사용 빈도가 높은 순서대로 정렬 후, dead_codes 개수만큼 가져오기
-        # argsort()로 내림차순 정렬하면 usage가 큰 인덱스부터 순서대로 정렬되므로
-        # 앞에서 dead_codes 개수(len(dead_codes))만큼 선택
-        top_codes = torch.argsort(self.usage, descending=True)[:len(dead_codes)]
-        
-        # 3) 임베딩 교체
-        with torch.no_grad():
-            self.embedding.weight[dead_codes] = self.embedding.weight[top_codes]
-
-        print(f"[reset_dead_codes_greedy] Replaced {len(dead_codes)} dead codes "
-            f"with most frequently used codes.")
-
-    
-
 
     # ------------------------------------------------------------------
 
