@@ -237,7 +237,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 inner_bar.update(1)
         epoch += 1
 
-        val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/val.txt'
+        val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
 
         with open(val_path, encoding='utf-8') as f:
             val_infos = [line.strip().split("|") for line in f]
@@ -253,7 +253,9 @@ def train(rank, args, configs, batch_size, num_gpus):
         z_pitchs = []
         z_energies = []
 
-        for val_info in val_infos:
+        for i in range(len(val_infos)):
+            if i % 25 != 0: continue
+            val_info = val_infos[i]
             val_basenames.append(val_info[0])
             emotions.append(emotion_map[val_info[2]])
         

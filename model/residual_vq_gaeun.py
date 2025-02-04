@@ -730,7 +730,7 @@ class ResidualVQ2_kmeans(torch.nn.Module):
         # 모든 단계의 quantized 코드를 concatenate
         final_quantized = torch.cat(quantized_codes, dim=1)
 
-        return final_quantized, total_vq_loss, indices_list[0], perplexities
+        return final_quantized, total_vq_loss, indices_list, perplexities
 
 class ReferenceEncoderSRVQ3(torch.nn.Module):
     def __init__(self, e_dim
@@ -744,6 +744,7 @@ class ReferenceEncoderSRVQ3(torch.nn.Module):
         print("reference_encoder m,p,e initialized")
 
         self.emotion_classifier = EmotionClassifier(e_dim//2, 7)
+        self.cls_loss = 0
 
     def forward(self, speech, emotions, p_mel, e_mel):
         # Step 1: Extract pitch information and neutralize it
@@ -765,9 +766,9 @@ class ReferenceEncoderSRVQ3(torch.nn.Module):
         emotion_preds_e = self.emotion_classifier(z_energy)
         cls_loss_e = torch.nn.functional.cross_entropy(emotion_preds_e, emotions)
 
-        cls_loss = (cls_loss_m + cls_loss_p + cls_loss_e) / 3
+        self.cls_loss = (cls_loss_m + cls_loss_p + cls_loss_e) / 2
 
-        return z_mel, z_pitch, z_energy, cls_loss
+        return z_mel, z_pitch, z_energy, self.cls_loss
 
 class SRVQ3WithNeutralization(torch.nn.Module):
     def __init__(
@@ -809,7 +810,7 @@ class SRVQ3WithNeutralization(torch.nn.Module):
         commit_loss = commit_loss_m + commit_loss_p + commit_loss_e
 
         # Combine indices for reference
-        indices = [indices_m, indices_p, indices_e]
+        indices = [indices_m[0], indices_m[1], indices_p[0], indices_p[1], indices_e[0], indices_e[1]]
 
         # print("commit_loss", commit_loss, "cls_loss", cls_loss)
 
