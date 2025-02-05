@@ -185,13 +185,18 @@ class FastSpeech2Loss(nn.Module):
         classifier_loss = torch.zeros_like(mel_loss)
         # for min_encoding_indice in min_encoding_indices:
         orig_style_ref_embs = [orig_style_ref_embs[:, :128], orig_style_ref_embs[:, 128:256], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:640], orig_style_ref_embs[:, 640:768]]
-        
+        idx = 0
         for style_ref_emb in orig_style_ref_embs:
             emotions = inputs[3]
             anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
-
+            if idx % 2 == 0:
+                beta = 0.5
+            else:
+                beta = 0.1
             if anchor is not None:
-                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
+                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * beta
+
+            idx += 1
 
 
                                 

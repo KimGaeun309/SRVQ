@@ -594,7 +594,7 @@ class VectorQuantizer_kmeans(nn.Module):
             self.embedding.weight[dead_codes] = self.embedding.weight[top_codes]
 
         print(f"[reset_dead_codes_greedy] Replaced {len(dead_codes)} dead codes "
-            f"with most frequently used codes.")
+            f"with most frequently used codes {len(top_codes)}.")
 
     
 
