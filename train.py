@@ -238,79 +238,79 @@ def train(rank, args, configs, batch_size, num_gpus):
         epoch += 1
         
 
-        val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
+        # val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
 
-        with open(val_path, encoding='utf-8') as f:
-            val_infos = [line.strip().split("|") for line in f]
+        # with open(val_path, encoding='utf-8') as f:
+        #     val_infos = [line.strip().split("|") for line in f]
 
-        import json
-        with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
-            emotion_map = json.load(f)
+        # import json
+        # with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
+        #     emotion_map = json.load(f)
 
-        val_basenames = []
-        emotions = []
-        styles = []
-        z_mels = []
-        z_pitchs = []
-        z_energies = []
+        # val_basenames = []
+        # emotions = []
+        # styles = []
+        # z_mels = []
+        # z_pitchs = []
+        # z_energies = []
 
-        for i in range(len(val_infos)):
-            if i % 25 != 0: continue
-            val_info = val_infos[i]
-            val_basenames.append(val_info[0])
-            emotions.append(emotion_map[val_info[2]])
+        # for i in range(len(val_infos)):
+        #     if i % 25 != 0: continue
+        #     val_info = val_infos[i]
+        #     val_basenames.append(val_info[0])
+        #     emotions.append(emotion_map[val_info[2]])
         
-        for i in range(len(val_basenames)):
-            val_basename = val_basenames[i]
-            emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
-            mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{val_basename[:3]}-mel-{val_basename}.npy')
-            mel = torch.from_numpy(mel).float().to(device)
-            mel = mel.unsqueeze(0)
+        # for i in range(len(val_basenames)):
+        #     val_basename = val_basenames[i]
+        #     emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
+        #     mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{val_basename[:3]}-mel-{val_basename}.npy')
+        #     mel = torch.from_numpy(mel).float().to(device)
+        #     mel = mel.unsqueeze(0)
 
-            pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{val_basename}_pitch.npy"
-            energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{val_basename}_energy.npy"
+        #     pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{val_basename}_pitch.npy"
+        #     energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{val_basename}_energy.npy"
             
-            pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
-            energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
+        #     pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
+        #     energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
             
-            # pitch_mel = pad_2D(pitch_mel)
-            # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
-            # energy_mel = pad_2D(energy_mel)print
-            # energy_mel = torch.from_numpy(energy_mel).to('cpu')
+        #     # pitch_mel = pad_2D(pitch_mel)
+        #     # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
+        #     # energy_mel = pad_2D(energy_mel)print
+        #     # energy_mel = torch.from_numpy(energy_mel).to('cpu')
 
-            z_mel, z_pitch, z_energy, cls_loss = model.ref_enc(mel, emotion, pitch_mel, energy_mel)
-            style, _, _, codebooks = model.style_extractor(z_mel, z_pitch, z_energy, cls_loss)
+        #     z_mel, z_pitch, z_energy, cls_loss = model.ref_enc(mel, emotion, pitch_mel, energy_mel)
+        #     style, _, _, codebooks = model.style_extractor(z_mel, z_pitch, z_energy, cls_loss)
 
-            z_mels.append(z_mel)
-            z_pitchs.append(z_pitch)
-            z_energies.append(z_energy)
-            styles.append(style)
+        #     z_mels.append(z_mel)
+        #     z_pitchs.append(z_pitch)
+        #     z_energies.append(z_energy)
+        #     styles.append(style)
 
-        z_mels = torch.cat(z_mels, dim=0)
-        z_pitchs = torch.cat(z_pitchs, dim=0)
-        z_energies = torch.cat(z_energies, dim=0)
-        styles = torch.cat(styles, dim=0)
+        # z_mels = torch.cat(z_mels, dim=0)
+        # z_pitchs = torch.cat(z_pitchs, dim=0)
+        # z_energies = torch.cat(z_energies, dim=0)
+        # styles = torch.cat(styles, dim=0)
         
-        vq_layers_list = [model.style_extractor.RVQ1.vq_layers[0], model.style_extractor.RVQ1.vq_layers[1], model.style_extractor.RVQ2.vq_layers[0], model.style_extractor.RVQ2.vq_layers[1], model.style_extractor.RVQ3.vq_layers[0], model.style_extractor.RVQ3.vq_layers[1]]
+        # vq_layers_list = [model.style_extractor.RVQ1.vq_layers[0], model.style_extractor.RVQ1.vq_layers[1], model.style_extractor.RVQ2.vq_layers[0], model.style_extractor.RVQ2.vq_layers[1], model.style_extractor.RVQ3.vq_layers[0], model.style_extractor.RVQ3.vq_layers[1]]
 
-        vq_inputs_list = [z_mels, z_pitchs, z_energies, z_mels - styles[:, :128], z_pitchs - styles[:, 256:384], z_energies - styles[:, 512:640]]
+        # vq_inputs_list = [z_mels, z_pitchs, z_energies, z_mels - styles[:, :128], z_pitchs - styles[:, 256:384], z_energies - styles[:, 512:640]]
 
         
-        for ii in range(len(vq_layers_list)):
-            if vq_layers_list[ii].dead_codes_count() < (7 / 2):
-                vq_layers_list[ii].greedy_restart()
-            else:
-                vq_layers_list[ii].reset_dead_codes_kmeans(vq_inputs_list[ii])
+        # for ii in range(len(vq_layers_list)):
+        #     if vq_layers_list[ii].dead_codes_count() < (7 / 2):
+        #         vq_layers_list[ii].greedy_restart()
+        #     else:
+        #         vq_layers_list[ii].reset_dead_codes_kmeans(vq_inputs_list[ii])
 
 
 
-        # model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
-        # model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_pitchs)
-        # model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_energies)
+        model.style_extractor.RVQ1.vq_layers[0].random_restart()
+        model.style_extractor.RVQ2.vq_layers[0].random_restart()
+        model.style_extractor.RVQ3.vq_layers[0].random_restart()
 
-        # model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
-        # model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
-        # model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
+        model.style_extractor.RVQ1.vq_layers[1].random_restart()
+        model.style_extractor.RVQ2.vq_layers[1].random_restart()
+        model.style_extractor.RVQ3.vq_layers[1].random_restart()
         
         
         

@@ -782,17 +782,17 @@ class ReferenceEncoderSRVQ3(torch.nn.Module):
         # Step 3: Extract energy information and neutralize it
         z_energy = self.ref_ence(e_mel.float())
 
-        # Compute emotion classifier loss (after Reference Encoder)
-        emotion_preds_m = self.emotion_classifier(z_mel)
-        cls_loss_m = torch.nn.functional.cross_entropy(emotion_preds_m, emotions)
+        # # Compute emotion classifier loss (after Reference Encoder)
+        # emotion_preds_m = self.emotion_classifier(z_mel)
+        # cls_loss_m = torch.nn.functional.cross_entropy(emotion_preds_m, emotions)
 
-        emotion_preds_p = self.emotion_classifier(z_pitch)
-        cls_loss_p = torch.nn.functional.cross_entropy(emotion_preds_p, emotions)
+        # emotion_preds_p = self.emotion_classifier(z_pitch)
+        # cls_loss_p = torch.nn.functional.cross_entropy(emotion_preds_p, emotions)
 
-        emotion_preds_e = self.emotion_classifier(z_energy)
-        cls_loss_e = torch.nn.functional.cross_entropy(emotion_preds_e, emotions)
+        # emotion_preds_e = self.emotion_classifier(z_energy)
+        # cls_loss_e = torch.nn.functional.cross_entropy(emotion_preds_e, emotions)
 
-        self.cls_loss = (cls_loss_m + cls_loss_p + cls_loss_e) / 2
+        # self.cls_loss = (cls_loss_m + cls_loss_p + cls_loss_e) / 2
 
         return z_mel, z_pitch, z_energy, self.cls_loss
 
@@ -836,11 +836,11 @@ class SRVQ3WithNeutralization(torch.nn.Module):
         commit_loss = commit_loss_m + commit_loss_p + commit_loss_e
 
         # Combine indices for reference
-        indices = [indices_m[0], indices_m[1], indices_p[0], indices_p[1], indices_e[0], indices_e[1]]
+        indices = [indices_m[0], indices_p[0], indices_e[0]]
 
         # print("commit_loss", commit_loss, "cls_loss", cls_loss)
 
-        vq_loss = commit_loss + cls_loss
+        vq_loss = commit_loss # + cls_loss
 
         codebooks = [quantized_m, quantized_p, quantized_e, quantized_m + quantized_p + quantized_e]
 

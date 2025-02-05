@@ -214,20 +214,20 @@ class FastSpeech2(nn.Module):
                 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
                 z_mel, z_pitch, z_energy, cls_loss = self.ref_enc(mels, emotions=emotions, p_mel=pitch_mel, e_mel=energy_mel)
-                if init_flag:
-                    # kmeans_init !!!!
-                    self.style_extractor.RVQ1.vq_layers[0].init_codebook_kmeans(z_mel)
-                    self.style_extractor.RVQ2.vq_layers[0].init_codebook_kmeans(z_pitch)
-                    self.style_extractor.RVQ3.vq_layers[0].init_codebook_kmeans(z_energy)
+                # if init_flag:
+                #     # kmeans_init !!!!
+                #     self.style_extractor.RVQ1.vq_layers[0].init_codebook_kmeans(z_mel)
+                #     self.style_extractor.RVQ2.vq_layers[0].init_codebook_kmeans(z_pitch)
+                #     self.style_extractor.RVQ3.vq_layers[0].init_codebook_kmeans(z_energy)
 
                 style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(z_mel, z_pitch, z_energy, cls_loss) 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
                 
 
-                if init_flag:
-                    self.style_extractor.RVQ1.vq_layers[1].init_codebook_kmeans(z_mel - style_ref_embs[:, :128])
-                    self.style_extractor.RVQ2.vq_layers[1].init_codebook_kmeans(z_pitch - style_ref_embs[:, 256:384])
-                    self.style_extractor.RVQ3.vq_layers[1].init_codebook_kmeans(z_energy - style_ref_embs[:, 512:640])
+                # if init_flag:
+                #     self.style_extractor.RVQ1.vq_layers[1].init_codebook_kmeans(z_mel - style_ref_embs[:, :128])
+                #     self.style_extractor.RVQ2.vq_layers[1].init_codebook_kmeans(z_pitch - style_ref_embs[:, 256:384])
+                #     self.style_extractor.RVQ3.vq_layers[1].init_codebook_kmeans(z_energy - style_ref_embs[:, 512:640])
 
             # style_ref_embs shape : [16, 256*3]   
 

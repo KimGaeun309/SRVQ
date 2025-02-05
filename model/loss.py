@@ -182,29 +182,30 @@ class FastSpeech2Loss(nn.Module):
         total_style_loss = style_loss + guided_loss
 
         
-        classifier_loss = torch.zeros_like(mel_loss)
-        # for min_encoding_indice in min_encoding_indices:
-        orig_style_ref_embs = [orig_style_ref_embs[:, :128], orig_style_ref_embs[:, 128:256], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:640], orig_style_ref_embs[:, 640:768]]
+        # classifier_loss = torch.zeros_like(mel_loss)
+        # # for min_encoding_indice in min_encoding_indices:
+        # orig_style_ref_embs = [orig_style_ref_embs[:, :128], orig_style_ref_embs[:, 128:256], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:640], orig_style_ref_embs[:, 640:768]]
         
-        for style_ref_emb in orig_style_ref_embs:
-            emotions = inputs[3]
-            anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
+        # for style_ref_emb in orig_style_ref_embs:
+        #     emotions = inputs[3]
+        #     anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
 
-            if anchor is not None:
-                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
+        #     if anchor is not None:
+        #         classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
+        
 
+        classifier_loss = None
 
-                                
-
+        for min_encoding_indice in min_encoding_indices:            
+            # Clssifier
+            emotions_pred = min_encoding_indice
+            emotions_pred = F.one_hot(emotions_pred, num_classes=7).float().squeeze()
             
-            # # Clssifier
-            # emotions_pred = min_encoding_indice
-            # emotions_pred = F.one_hot(emotions_pred, num_classes=7).float().squeeze()
-
-            # emotions_pred = min_encoding_indices.float().squeeze()
-            # emotions = inputs[3]
-
-            # classifier_loss += self.criterion(emotions_pred, emotions) * 0.05
+            emotions = inputs[3]
+            if not classifier_loss:
+                classifier_loss = self.criterion(emotions_pred, emotions) * 0.1
+            else:
+                classifier_loss += self.criterion(emotions_pred, emotions) * 0.1
 
             
         
