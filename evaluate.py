@@ -37,16 +37,16 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
             
             pitch_mel, energy_mel = [], []
 
-            for basename in basenames:
-                pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
-                energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{basename}_energy.npy"
-                pitch_mel.append(np.load(pitch_path).T)
-                energy_mel.append(np.load(energy_path).T)
+            # for basename in basenames:
+            #     pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
+            #     energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{basename}_energy.npy"
+            #     pitch_mel.append(np.load(pitch_path).T)
+            #     energy_mel.append(np.load(energy_path).T)
             
-            pitch_mel = pad_2D(pitch_mel)
-            pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
-            energy_mel = pad_2D(energy_mel)
-            energy_mel = torch.from_numpy(energy_mel).to('cuda')
+            # pitch_mel = pad_2D(pitch_mel)
+            # pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
+            # energy_mel = pad_2D(energy_mel)
+            # energy_mel = torch.from_numpy(energy_mel).to('cuda')
             
 
 
