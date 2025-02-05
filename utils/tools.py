@@ -264,6 +264,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
         guided_loss,
         vq_loss,
         _, 
+        _,
     ) = predictions
 
     for i in range(len(predictions[0])):
