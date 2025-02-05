@@ -12,8 +12,8 @@ from .transformers.layers import PostNet
 from .modules import VarianceAdaptor, SinusoidalPositionalEmbedding
 from utils.tools import get_mask_from_lengths
 from text.symbols import symbols
-from .residual_vq_gaeun import ReferenceEncoderSRVQ3, SRVQ3WithNeutralization # 수정
-# from .residuaal_vq import SRVQPyworld, ResidualVQ
+# from .residual_vq_gaeun import ReferenceEncoderSRVQ3, SRVQ3WithNeutralization # 수정
+from .residual_vq import ResidualVQ
 
 from .gst.style_encoder import StyleEncoder, GST_VQ
 
@@ -96,10 +96,10 @@ class FastSpeech2(nn.Module):
             )
 
         # Style module
-        self.ref_enc = ReferenceEncoderSRVQ3(
-            e_dim=model_config["residual_vq"]["vq_hidden"],
-        )
-        self.style_extractor = SRVQ3WithNeutralization(
+        # self.ref_enc = ReferenceEncoderSRVQ3(
+        #     e_dim=model_config["residual_vq"]["vq_hidden"],
+        # )
+        self.style_extractor = ResidualVQ(
             idim=model_config["residual_vq"]["n_mel_channels"],
             conv_layers=model_config["residual_vq"]["rvq_conv_layers"],
             conv_chans_list=model_config["residual_vq"]["rvq_conv_chans_list"],
@@ -213,21 +213,21 @@ class FastSpeech2(nn.Module):
             else:
                 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
-                z_mel, z_pitch, z_energy, cls_loss = self.ref_enc(mels, emotions=emotions, p_mel=pitch_mel, e_mel=energy_mel)
-                if init_flag:
-                    # kmeans_init !!!!
-                    self.style_extractor.RVQ1.vq_layers[0].init_codebook_kmeans(z_mel)
-                    self.style_extractor.RVQ2.vq_layers[0].init_codebook_kmeans(z_pitch)
-                    self.style_extractor.RVQ3.vq_layers[0].init_codebook_kmeans(z_energy)
+                # z_mel, z_pitch, z_energy, cls_loss = self.ref_enc(mels, emotions=emotions, p_mel=pitch_mel, e_mel=energy_mel)
+                # if init_flag:
+                #     # kmeans_init !!!!
+                #     self.style_extractor.RVQ1.vq_layers[0].init_codebook_kmeans(z_mel)
+                #     self.style_extractor.RVQ2.vq_layers[0].init_codebook_kmeans(z_pitch)
+                #     self.style_extractor.RVQ3.vq_layers[0].init_codebook_kmeans(z_energy)
 
-                style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(z_mel, z_pitch, z_energy, cls_loss) 
+                style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels) 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
                 
 
-                if init_flag:
-                    self.style_extractor.RVQ1.vq_layers[1].init_codebook_kmeans(z_mel - style_ref_embs[:, :128])
-                    self.style_extractor.RVQ2.vq_layers[1].init_codebook_kmeans(z_pitch - style_ref_embs[:, 256:384])
-                    self.style_extractor.RVQ3.vq_layers[1].init_codebook_kmeans(z_energy - style_ref_embs[:, 512:640])
+                # if init_flag:
+                #     self.style_extractor.RVQ1.vq_layers[1].init_codebook_kmeans(z_mel - style_ref_embs[:, :128])
+                #     self.style_extractor.RVQ2.vq_layers[1].init_codebook_kmeans(z_pitch - style_ref_embs[:, 256:384])
+                #     self.style_extractor.RVQ3.vq_layers[1].init_codebook_kmeans(z_energy - style_ref_embs[:, 512:640])
 
             # style_ref_embs shape : [16, 256*3]   
 

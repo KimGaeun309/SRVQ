@@ -292,13 +292,10 @@ def train(rank, args, configs, batch_size, num_gpus):
         # styles = torch.cat(styles, dim=0)
 
         
-        model.style_extractor.RVQ1.vq_layers[0].greedy_restart()
-        model.style_extractor.RVQ1.vq_layers[1].greedy_restart()
-        model.style_extractor.RVQ2.vq_layers[0].greedy_restart()
-        model.style_extractor.RVQ2.vq_layers[1].greedy_restart()
-        model.style_extractor.RVQ3.vq_layers[0].greedy_restart()
-        model.style_extractor.RVQ3.vq_layers[1].greedy_restart()
-
+        model.style_extractor.vq_layer1.random_restart()
+        model.style_extractor.vq_layer2.random_restart()
+        model.style_extractor.vq_layer3.random_restart()
+        
         # if model.style_extractor.RVQ1.vq_layers[0].dead_codes_count() < (7/2):
         #     model.style_extractor.RVQ1.vq_layers[0].greedy_restart()
         # else:

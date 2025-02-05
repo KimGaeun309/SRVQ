@@ -913,7 +913,7 @@ class SRVQPyworld(torch.nn.Module):
         style_ref_embs_3, vq_loss_3, min_encoding_indices_3, codebooks_3, perplexity_3 = self.RVQd(energy_encoded)
 
         # Combine style embeddings
-        style_ref_embs = torch.cat([style_ref_embs_1, style_ref_embs_2 style_ref_embs_3], dim=1)
+        style_ref_embs = torch.cat([style_ref_embs_1, style_ref_embs_2, style_ref_embs_3], dim=1)
 
         # Combine VQ losses
         vq_loss = vq_loss_1 + vq_loss_2 + vq_loss_3
