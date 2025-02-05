@@ -88,7 +88,10 @@ def train(rank, args, configs, batch_size, num_gpus):
         outer_bar.update()
 
     train = True
-    init_flag = True
+    if step < 10000: 
+        init_flag = True
+    else:
+        init_flag = False
     model.train()
     while train:
         if rank == 0:
