@@ -85,8 +85,8 @@ if __name__ == "__main__":
         energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
 
         # style 추출
-        z_mel, z_pitch, z_energy, cls_loss = model.ref_enc(mel, emotion, pitch_mel, energy_mel)
-        style, _, _, codebooks = model.style_extractor(z_mel, z_pitch, z_energy, cls_loss)
+        ref_embs, cls_loss = model.ref_enc(mel, emotion) #, pitch_mel, energy_mel)
+        style, _, _, codebooks = model.style_extractor(ref_embs, cls_loss)
 
         styles.append(style.cpu().data[:, :])  # 전체 임베딩 (예: 768 차원 등)
 
@@ -101,15 +101,11 @@ if __name__ == "__main__":
     # 슬라이스 구간 (768차원 기준)
     # 6개 구간: 각각 128차원씩
     # 총 768 == 6 * 128
-    data_x_1 = styles[:, 0:128].numpy()
-    data_x_2 = styles[:, 128:256].numpy()
-    data_x_3 = styles[:, 256:384].numpy()
-    data_x_4 = styles[:, 384:512].numpy()
-    data_x_5 = styles[:, 512:640].numpy()
-    data_x_6 = styles[:, 640:768].numpy()
-    data_x_7 = styles[:, :].numpy()  # 전체
-
-    data_x_8 = model.style_extract_fc(styles)
+    data_x_1 = styles[:, 0:256].numpy()
+    data_x_2 = styles[:, 256:512].numpy()
+    data_x_3 = styles[:, 512:].numpy()
+    data_x_4 = styles[:, :].numpy()  # 전체
+    data_x_5 = model.style_extract_fc(styles).detach().numpy()
 
     def run_tsne(data, perplexity=20, n_iter=2000):
         if data.shape[1] == 0:
@@ -123,11 +119,10 @@ if __name__ == "__main__":
     tsne_3 = run_tsne(data_x_3)
     tsne_4 = run_tsne(data_x_4)
     tsne_5 = run_tsne(data_x_5)
-    tsne_6 = run_tsne(data_x_6)
-    tsne_7 = run_tsne(data_x_7)
+
 
     # 2x4 서브플롯 생성 (7개 쓰고, 1개는 비우는 형태)
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    fig, axes = plt.subplots(2, 3, figsize=(20, 10))
 
     # Helper to scatter-plot
     def scatter_tsne(ax, tsne_data, data_y, title):
@@ -143,16 +138,14 @@ if __name__ == "__main__":
         ax.grid(True)
 
     # 각 subplot에 그리기
-    scatter_tsne(axes[0, 0], tsne_1, emotions, "[:, 0:128]")
-    scatter_tsne(axes[0, 1], tsne_2, emotions, "[:, 128:256]")
-    scatter_tsne(axes[0, 2], tsne_3, emotions, "[:, 256:384]")
-    scatter_tsne(axes[0, 3], tsne_4, emotions, "[:, 384:512]")
-    scatter_tsne(axes[1, 0], tsne_5, emotions, "[:, 512:640]")
-    scatter_tsne(axes[1, 1], tsne_6, emotions, "[:, 640:768]")
-    scatter_tsne(axes[1, 2], tsne_7, emotions, "[:, :] (full)")
+    scatter_tsne(axes[0, 0], tsne_1, emotions, "styles[:, :256]")
+    scatter_tsne(axes[0, 1], tsne_2, emotions, "styles[:, 256:512]")
+    scatter_tsne(axes[0, 2], tsne_3, emotions, "styles[:, 512:]")
+    scatter_tsne(axes[1, 0], tsne_4, emotions, "styles[:, :]")
+    scatter_tsne(axes[1, 1], tsne_5, emotions, "style_extract_fc(styles)")
 
     # 마지막 subplot은 비어있음
-    axes[1, 3].set_visible(False)
+    axes[1, 2].set_visible(False)
 
     # 범례: 첫 번째 subplot에만 예시로 추가(필요 시 다른 방식으로 조정 가능)
     axes[0, 0].legend(loc='best', fontsize=8)
