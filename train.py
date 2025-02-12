@@ -147,7 +147,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                         message1 = "Step {}/{}, ".format(step, total_step)
-                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}".format( 
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}".format( 
                             ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
                             *losses_
                         )
@@ -198,8 +198,8 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                         model.train()
 
-                        if losses[9].mean() > 0.4:
-                            init_flag = True   
+                        # if losses[9].mean() > 0.4:
+                        #     init_flag = True   
 
                         # if epoch < 5:
                         #     init_flag = True
