@@ -178,7 +178,7 @@ class FastSpeech2Loss(nn.Module):
         duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
 
         # Style loss 
-        style_loss = self.mae_loss(style_pred_embs, style_ref_embs)  # lamda scale
+        style_loss = self.mae_loss(style_pred_embs, style_ref_embs) * 10 # lamda scale
         total_style_loss = style_loss + guided_loss
 
         
