@@ -170,15 +170,15 @@ class FastSpeech2Loss(nn.Module):
         )
         mel_targets = mel_targets.masked_select(mel_masks.unsqueeze(-1))
 
-        mel_loss = self.mae_loss(mel_predictions, mel_targets)
-        postnet_mel_loss = self.mae_loss(postnet_mel_predictions, mel_targets)
+        mel_loss = self.mae_loss(mel_predictions, mel_targets) * 2
+        postnet_mel_loss = self.mae_loss(postnet_mel_predictions, mel_targets) * 2
 
         pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
         energy_loss = self.mse_loss(energy_predictions, energy_targets)
         duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
 
         # Style loss 
-        style_loss = self.mae_loss(style_pred_embs, style_ref_embs) * 10 # lamda scale
+        style_loss = self.mae_loss(style_pred_embs, style_ref_embs)  # lamda scale
         total_style_loss = style_loss + guided_loss
 
         
@@ -207,6 +207,8 @@ class FastSpeech2Loss(nn.Module):
 
             # classifier_loss += self.criterion(emotions_pred, emotions) * 0.05
 
+        guided_loss *= 0.1
+        vq_loss *= 0.1
             
         
         total_loss = (
