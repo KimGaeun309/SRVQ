@@ -181,8 +181,8 @@ class ReferenceEncoderDynamic(torch.nn.Module):
         self.gru.flatten_parameters()
 
         # print("hs for GRU:", hs.size())
-        emotion_preds_m = self.emotion_classifier(z_mel)
-        cls_loss_m = torch.nn.functional.cross_entropy(emotion_preds, emotions)
+        # emotion_preds_m = self.emotion_classifier(z_mel)
+        # cls_loss_m = torch.nn.functional.cross_entropy(emotion_preds, emotions)
         _, ref_embs = self.gru(hs)  # [num_layers, B, gru_units]
 
         # print("ref_embs:", ref_embs.size())
@@ -421,11 +421,11 @@ class SRVQ3(torch.nn.Module):
 
         self.ref_ence = ReferenceEncoderDynamic()
 
-        self.RVQp = ResidualVQ2()
+        self.RVQp = ResidualVQ2_kmeans()
 
-        self.RVQd = ResidualVQ2()
+        self.RVQd = ResidualVQ2_kmeans()
 
-        self.RVQe = ResidualVQ2()
+        self.RVQe = ResidualVQ2_kmeans()
 
 
     def forward(self, speech: torch.Tensor, p_targets: torch.Tensor, d_targets: torch.Tensor, e_targets: torch.Tensor) -> torch.Tensor:
@@ -441,11 +441,13 @@ class SRVQ3(torch.nn.Module):
 
         commit_loss = commit_loss_1 + commit_loss_2 + commit_loss_3
 
-        codebooks = [quantized_1, quantized_2, quantized_3]
+        codebooks = [quantized_1, quantized_2, quantized_3, quantized_1 + quantized_2 + quantized_3]
 
         # print("quantized", quantized)
 
-        return quantized, commit_loss, indices_1, codebooks
+        indices = [indices_1[0], indices_1[1], indices_2[0], indices_2[1], indices_3[0], indices_3[1]]
+
+        return quantized, commit_loss, indices, codebooks
 
 
 class VectorQuantizer_kmeans(nn.Module):
@@ -763,40 +765,44 @@ class ReferenceEncoderSRVQ3(torch.nn.Module):
     ):
         super(ReferenceEncoderSRVQ3, self).__init__()
 
-        self.ref_encm = ReferenceEncoder()
-        self.ref_encp = ReferenceEncoder()
-        self.ref_ence = ReferenceEncoder()
+        # self.ref_encm = ReferenceEncoder()
+        self.ref_enc_pde = ReferenceEncoderDynamic()
+        self.ref_enc = ReferenceEncoder()
 
         print("reference_encoder m,p,e initialized")
 
         self.emotion_classifier = EmotionClassifier(e_dim//2, 7)
         self.cls_loss = 0
+        self.p_mean = 191.
 
-    def forward(self, speech, emotions, p_mel, e_mel):
+    def forward(self, speech, p_targets, d_targets, e_targets, emotions):
         # Step 1: Extract pitch information and neutralize it
-        z_mel = self.ref_encm(speech.float())
+        z_mel = self.ref_enc(speech.float())
+
+        p_targets_norm = p_targets - p_targets.mean(dim=-1, keepdim=True) + self.p_mean
 
         # Step 2: Extract duration information and neutralize it
-        z_pitch = self.ref_encp(p_mel.float())
+        pde = torch.cat([p_targets_norm.float(), d_targets.float(), e_targets.float()], dim=-1)
+        z_pde = self.ref_enc_pde(pde.float())
 
         # Step 3: Extract energy information and neutralize it
-        z_energy = self.ref_ence(e_mel.float())
+        # z_energy = self.ref_ence(e_mel.float())
 
         # Compute emotion classifier loss (after Reference Encoder)
         emotion_preds_m = self.emotion_classifier(z_mel)
         cls_loss_m = torch.nn.functional.cross_entropy(emotion_preds_m, emotions)
 
-        emotion_preds_p = self.emotion_classifier(z_pitch)
+        emotion_preds_p = self.emotion_classifier(z_pde)
         cls_loss_p = torch.nn.functional.cross_entropy(emotion_preds_p, emotions)
 
-        emotion_preds_e = self.emotion_classifier(z_energy)
-        cls_loss_e = torch.nn.functional.cross_entropy(emotion_preds_e, emotions)
+        # emotion_preds_e = self.emotion_classifier(z_energy)
+        # cls_loss_e = torch.nn.functional.cross_entropy(emotion_preds_e, emotions)
 
-        self.cls_loss = (cls_loss_m + cls_loss_p + cls_loss_e) / 2
+        self.cls_loss = (cls_loss_m + cls_loss_p) / 2
 
-        return z_mel, z_pitch, z_energy, self.cls_loss
+        return z_mel, z_pde, self.cls_loss
 
-class SRVQ3WithNeutralization(torch.nn.Module):
+class SRVQ_PDE(torch.nn.Module):
     def __init__(
         self,
         idim: int = 80,
@@ -811,39 +817,43 @@ class SRVQ3WithNeutralization(torch.nn.Module):
         num_vq: int = 3,
         beta: float = 0.2,
     ):
-        super(SRVQ3WithNeutralization, self).__init__()
+        super(SRVQ_PDE, self).__init__()
 
-        self.RVQ1 = ResidualVQ2_kmeans(n_e=n_e)
-        self.RVQ2 = ResidualVQ2_kmeans(n_e=n_e)
-        self.RVQ3 = ResidualVQ2_kmeans(n_e=n_e)
+        self.RVQ1 = ResidualVQ2_kmeans(n_e=n_e, num_vq=3, e_dim=128)
+        self.RVQ2 = ResidualVQ2_kmeans(n_e=n_e, num_vq=3, e_dim=128)
+        # self.RVQ3 = ResidualVQ2_kmeans(n_e=n_e)
         
 
 
     # def forward(self, speech: torch.Tensor, emotions: torch.Tensor, p_mel: torch.Tensor, e_mel: torch.Tensor) -> torch.Tensor:
-    def forward(self, z_mel: torch.Tensor, z_pitch: torch.Tensor, z_energy: torch.Tensor, cls_loss) -> torch.Tensor:
+    def forward(self, z_mel: torch.Tensor, z_pde: torch.Tensor, cls_loss) -> torch.Tensor:
         
 
 
         quantized_m, commit_loss_m, indices_m, _ = self.RVQ1(z_mel)
-        quantized_p, commit_loss_p, indices_p, _ = self.RVQ2(z_pitch)
-        quantized_e, commit_loss_e, indices_e, _ = self.RVQ3(z_energy)
-        
+        quantized_p, commit_loss_p, indices_p, _ = self.RVQ2(z_pde)
+        # quantized_e, commit_loss_e, indices_e, _ = self.RVQ3(z_energy)
 
         # Combine all quantized representations
-        quantized = torch.cat([quantized_m, quantized_p, quantized_e], dim=1)
+        quantized = torch.cat([quantized_m, quantized_p], dim=1)
         
         # Compute total commitment loss
-        commit_loss = commit_loss_m + commit_loss_p + commit_loss_e
+        commit_loss = commit_loss_m + commit_loss_p 
 
         # Combine indices for reference
-        indices = [indices_m[0], indices_m[1], indices_p[0], indices_p[1], indices_e[0], indices_e[1]]
+        indices = [indices_m[0], indices_m[1], indices_m[2], indices_p[0], indices_p[1], indices_p[2]]
 
         # print("commit_loss", commit_loss, "cls_loss", cls_loss)
 
         vq_loss = commit_loss + cls_loss
 
-        codebooks = [quantized_m, quantized_p, quantized_e, quantized_m + quantized_p + quantized_e]
-
+        codebooks = [torch.cat([quantized_m[:, :128], quantized_p[:, :128]], dim=1), 
+                     torch.cat([quantized_m[:, 128:256], quantized_p[:, 128:256]], dim=1), 
+                     torch.cat([quantized_m[:, 256:], quantized_m[: ,256:]], dim=1), 
+                     torch.cat([quantized_m[:, :128], quantized_p[:, :128]], dim=1) +
+                      torch.cat([quantized_m[:, 128:256], quantized_p[:, 128:256]], dim=1) +
+                      torch.cat([quantized_m[:, 256:], quantized_m[: ,256:]], dim=1)]
+        
         # print("indices", indices)
 
         return quantized, vq_loss, indices, codebooks

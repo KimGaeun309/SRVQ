@@ -37,16 +37,16 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
             
             pitch_mel, energy_mel = [], []
 
-            for basename in basenames:
-                pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
-                energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{basename}_energy.npy"
-                pitch_mel.append(np.load(pitch_path).T)
-                energy_mel.append(np.load(energy_path).T)
+            # for basename in basenames:
+            #     pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
+            #     energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{basename}_energy.npy"
+            #     pitch_mel.append(np.load(pitch_path).T)
+            #     energy_mel.append(np.load(energy_path).T)
             
-            pitch_mel = pad_2D(pitch_mel)
-            pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
-            energy_mel = pad_2D(energy_mel)
-            energy_mel = torch.from_numpy(energy_mel).to('cuda')
+            # pitch_mel = pad_2D(pitch_mel)
+            # pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
+            # energy_mel = pad_2D(energy_mel)
+            # energy_mel = torch.from_numpy(energy_mel).to('cuda')
             
 
 
@@ -75,7 +75,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
             loss_means.append(loss_sum / len(dataset))
             loss_means_.append(loss_sum / len(dataset))
 
-    message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style Loss: {:.4f}, guided_loss: {:.4f}, vq_loss: {:.4f}".format( 
+    message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style Loss: {:.4f}, guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss: {:.4f}".format( 
         *([step] + [l for l in loss_means_])
     )
 

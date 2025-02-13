@@ -108,16 +108,16 @@ def train(rank, args, configs, batch_size, num_gpus):
                 
                 pitch_mel, energy_mel = [], []
 
-                for basename in basenames:
-                    pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
-                    energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{basename}_energy.npy"
-                    pitch_mel.append(np.load(pitch_path).T)
-                    energy_mel.append(np.load(energy_path).T)
+                # for basename in basenames:
+                #     pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
+                #     energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{basename}_energy.npy"
+                #     pitch_mel.append(np.load(pitch_path).T)
+                #     energy_mel.append(np.load(energy_path).T)
                 
-                pitch_mel = pad_2D(pitch_mel)
-                pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
-                energy_mel = pad_2D(energy_mel)
-                energy_mel = torch.from_numpy(energy_mel).to('cuda')
+                # pitch_mel = pad_2D(pitch_mel)
+                # pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
+                # energy_mel = pad_2D(energy_mel)
+                # energy_mel = torch.from_numpy(energy_mel).to('cuda')
                 
 
                 with amp.autocast(args.use_amp):
@@ -147,7 +147,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                         message1 = "Step {}/{}, ".format(step, total_step)
-                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}".format( 
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss: {:.4f}".format( 
                             ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
                             *losses_
                         )
@@ -201,8 +201,8 @@ def train(rank, args, configs, batch_size, num_gpus):
                         # if losses[9].mean() > 0.4:
                         #     init_flag = True   
 
-                        # if epoch < 5:
-                        #     init_flag = True
+                        if epoch < 5 and losses[9].mean() > 0.4:
+                            init_flag = True
 
                         # if epoch < 5:
                         #     model.style_extractor.vq_layer1.random_restart()
@@ -297,10 +297,10 @@ def train(rank, args, configs, batch_size, num_gpus):
         
         model.style_extractor.RVQ1.vq_layers[0].greedy_restart()
         model.style_extractor.RVQ1.vq_layers[1].greedy_restart()
+        model.style_extractor.RVQ1.vq_layers[2].greedy_restart()
         model.style_extractor.RVQ2.vq_layers[0].greedy_restart()
         model.style_extractor.RVQ2.vq_layers[1].greedy_restart()
-        model.style_extractor.RVQ3.vq_layers[0].greedy_restart()
-        model.style_extractor.RVQ3.vq_layers[1].greedy_restart()
+        model.style_extractor.RVQ2.vq_layers[2].greedy_restart()
 
         # if model.style_extractor.RVQ1.vq_layers[0].dead_codes_count() < (7/2):
         #     model.style_extractor.RVQ1.vq_layers[0].greedy_restart()
