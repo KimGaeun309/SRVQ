@@ -170,28 +170,27 @@ class FastSpeech2Loss(nn.Module):
         )
         mel_targets = mel_targets.masked_select(mel_masks.unsqueeze(-1))
 
-        mel_loss = self.mae_loss(mel_predictions, mel_targets) * 2
-        postnet_mel_loss = self.mae_loss(postnet_mel_predictions, mel_targets) * 2
+        mel_loss = self.mae_loss(mel_predictions, mel_targets) 
+        postnet_mel_loss = self.mae_loss(postnet_mel_predictions, mel_targets) 
 
         pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
         energy_loss = self.mse_loss(energy_predictions, energy_targets)
         duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
 
         # Style loss 
-        style_loss = self.mae_loss(style_pred_embs, style_ref_embs)  # lamda scale
+        style_loss = self.mae_loss(style_pred_embs, style_ref_embs) * 10 # lamda scale
         total_style_loss = style_loss + guided_loss
 
         
         classifier_loss = torch.zeros_like(mel_loss)
         # for min_encoding_indice in min_encoding_indices:
-        orig_style_ref_embs = [orig_style_ref_embs[:, :128], orig_style_ref_embs[:, 128:256], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:640], orig_style_ref_embs[:, 640:768]]
+        orig_style_ref_embs_list = [orig_style_ref_embs[:, :128], orig_style_ref_embs[:, 128:256], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:640], orig_style_ref_embs[:, 640:768]]
 
-        # for style_ref_emb in orig_style_ref_embs:
-        #     emotions = inputs[3]
-        #     anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
-        #     if anchor is not None:
-        #         classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
-
+        for style_ref_emb in orig_style_ref_embs_list:
+            emotions = inputs[3]
+            anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
+            if anchor is not None:
+                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.2
 
 
 
@@ -207,12 +206,12 @@ class FastSpeech2Loss(nn.Module):
 
             # classifier_loss += self.criterion(emotions_pred, emotions) * 0.05
 
-        guided_loss *= 0.1
-        vq_loss *= 0.1
+        guided_loss 
+        vq_loss 
             
         
         total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss #+ classifier_loss 
+            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss 
         )
         return (
             total_loss,

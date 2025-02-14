@@ -199,12 +199,20 @@ class MelDecoder(nn.Module):
             requires_grad=False,
         )
 
-        self.layer_stack = nn.ModuleList(
+        self.layer_stack_1 = nn.ModuleList(
             [
                 DeFFTBlock(
                     d_model, n_head, d_k, d_v, d_inner, kernel_size, style_dim, dropout=dropout
                 )
-                for _ in range(n_layers)
+                for _ in range(4)
+            ]
+        )
+        self.layer_stack_2 = nn.ModuleList(
+            [
+                FFTBlock(
+                    d_model, n_head, d_k, d_v, d_inner, kernel_size, dropout=dropout
+                )
+                for _ in range(2)
             ]
         )
 
@@ -233,12 +241,19 @@ class MelDecoder(nn.Module):
             mask = mask[:, :max_len]
             slf_attn_mask = slf_attn_mask[:, :, :max_len]
 
-        for dec_layer, codebook in zip(self.layer_stack, codebooks):
+        for dec_layer, codebook in zip(self.layer_stack_1, codebooks):
             dec_output, dec_slf_attn = dec_layer(
                 dec_output, codebook, mask=mask, slf_attn_mask=slf_attn_mask,
             )
             if return_attns:
                 dec_slf_attn_list += [dec_slf_attn]
+                
+        for dec_layer in self.layer_stack_2:
+            dec_output, dec_slf_attn = dec_layer(
+                dec_output, mask=mask, slf_attn_mask=slf_attn_mask
+            )
+            if return_attns:
+                enc_slf_attn_list += [dec_slf_attn]
 
         return dec_output, mask
 
