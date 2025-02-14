@@ -248,12 +248,12 @@ class MelDecoder(nn.Module):
             if return_attns:
                 dec_slf_attn_list += [dec_slf_attn]
                 
-        for dec_layer in self.layer_stack_2:
-            dec_output, dec_slf_attn = dec_layer(
-                dec_output, mask=mask, slf_attn_mask=slf_attn_mask
-            )
-            if return_attns:
-                enc_slf_attn_list += [dec_slf_attn]
+        # for dec_layer in self.layer_stack_2:
+        #     dec_output, dec_slf_attn = dec_layer(
+        #         dec_output, mask=mask, slf_attn_mask=slf_attn_mask
+        #     )
+        #     if return_attns:
+        #         enc_slf_attn_list += [dec_slf_attn]
 
         return dec_output, mask
 
