@@ -46,13 +46,15 @@ class DeFFTBlock(torch.nn.Module):
     def forward(self, input, style_vector, mask=None, slf_attn_mask=None):
         # multi-head self attn
         slf_attn_output, slf_attn = self.slf_attn(input, input, input, mask=slf_attn_mask)
-        slf_attn_output = self.shln_0(slf_attn_output, style_vector)
+        if style_vector != []:
+            slf_attn_output = self.shln_0(slf_attn_output, style_vector)
         if mask is not None:
             slf_attn_output = slf_attn_output.masked_fill(mask.unsqueeze(-1), 0)
 
         # position wise FF
         output = self.pos_ffn(slf_attn_output)
-        output = self.shln_1(output, style_vector)
+        if style_vector != []:
+            output = self.shln_1(output, style_vector)
         if mask is not None:
             output = output.masked_fill(mask.unsqueeze(-1), 0)
 

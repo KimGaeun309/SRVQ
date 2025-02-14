@@ -795,6 +795,10 @@ class ReferenceEncoderSRVQ3(torch.nn.Module):
         self.cls_loss = (cls_loss_m + cls_loss_p + cls_loss_e) / 2
 
         return z_mel, z_pitch, z_energy, self.cls_loss
+    
+def l2_normalize(tensor, eps=1e-8):
+    return tensor / (tensor.norm(dim=-1, keepdim=True) + eps)
+
 
 class SRVQ3WithNeutralization(torch.nn.Module):
     def __init__(
@@ -840,9 +844,9 @@ class SRVQ3WithNeutralization(torch.nn.Module):
 
         # print("commit_loss", commit_loss, "cls_loss", cls_loss)
 
-        vq_loss = commit_loss + cls_loss
+        vq_loss = commit_loss # + cls_loss
 
-        codebooks = [quantized_m, quantized_p, quantized_e, quantized_m + quantized_p + quantized_e]
+        codebooks = [quantized_m, quantized_p, quantized_e, quantized_m+quantized_p+quantized_e]
 
         # print("indices", indices)
 
