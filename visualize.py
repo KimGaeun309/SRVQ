@@ -120,7 +120,6 @@ if __name__ == "__main__":
     tsne_4 = run_tsne(data_x_4)
     tsne_5 = run_tsne(data_x_5)
 
-
     # 2x4 서브플롯 생성 (7개 쓰고, 1개는 비우는 형태)
     fig, axes = plt.subplots(2, 3, figsize=(20, 10))
 
@@ -128,20 +127,20 @@ if __name__ == "__main__":
     def scatter_tsne(ax, tsne_data, data_y, title):
         if tsne_data is None:
             ax.set_title(f"{title} - Not Available")
-            ax.grid(True)
+            ax.grid(False)  # 격자무늬 없애기
             return
         for i, (c, label) in enumerate(zip(colors, labels)):
-            ax.scatter(tsne_data[data_y==i, 0],
-                       tsne_data[data_y==i, 1],
+            ax.scatter(tsne_data[data_y == i, 0],
+                       tsne_data[data_y == i, 1],
                        c=c, label=label, alpha=0.5)
         ax.set_title(title)
-        ax.grid(True)
+        ax.grid(False)  # 격자무늬 없애기
 
     # 각 subplot에 그리기
-    scatter_tsne(axes[0, 0], tsne_1, emotions, "styles[:, :256]")
-    scatter_tsne(axes[0, 1], tsne_2, emotions, "styles[:, 256:512]")
-    scatter_tsne(axes[0, 2], tsne_3, emotions, "styles[:, 512:]")
-    scatter_tsne(axes[1, 0], tsne_4, emotions, "styles[:, :]")
+    scatter_tsne(axes[0, 0], tsne_1, emotions, "Embeddings of VQ1")
+    scatter_tsne(axes[0, 1], tsne_2, emotions, "Embeddings of VQ2")
+    scatter_tsne(axes[0, 2], tsne_3, emotions, "Embeddings of VQ3")
+    scatter_tsne(axes[1, 0], tsne_4, emotions, "Embeddings of RVQ")
     scatter_tsne(axes[1, 1], tsne_5, emotions, "style_extract_fc(styles)")
 
     # 마지막 subplot은 비어있음
@@ -151,7 +150,7 @@ if __name__ == "__main__":
     axes[0, 0].legend(loc='best', fontsize=8)
 
     plt.tight_layout()
-    plt.savefig('fig.png', dpi=300)
+    plt.savefig('fig.png', dpi=300, bbox_inches='tight')  # 깔끔한 여백을 위한 bbox_inches='tight'
     plt.close()
 
 
