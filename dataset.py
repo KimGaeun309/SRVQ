@@ -161,11 +161,6 @@ class TextDatasetSingle(Dataset):
 
         self.basename, self.speaker, self.emotion, self.text, self.raw_text = ["싱글_"+speaker+'_'+emotion+'_'+text[:50]], [speaker], [emotion], [phonemes], [text]
 
-
-        print("self.speaker", self.speaker)
-
-        print("self.text", self.text)
-
         with open(
             os.path.join(
                 preprocess_config["path"]["preprocessed_path"], "speakers.json"

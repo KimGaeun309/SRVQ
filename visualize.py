@@ -118,10 +118,10 @@ if __name__ == "__main__":
     tsne_2 = run_tsne(data_x_2)
     tsne_3 = run_tsne(data_x_3)
     tsne_4 = run_tsne(data_x_4)
-    tsne_5 = run_tsne(data_x_5)
+    # tsne_5 = run_tsne(data_x_5)
 
     # 2x4 서브플롯 생성 (7개 쓰고, 1개는 비우는 형태)
-    fig, axes = plt.subplots(2, 3, figsize=(20, 10))
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
 
     # Helper to scatter-plot
     def scatter_tsne(ax, tsne_data, data_y, title):
@@ -139,12 +139,12 @@ if __name__ == "__main__":
     # 각 subplot에 그리기
     scatter_tsne(axes[0, 0], tsne_1, emotions, "Embeddings of VQ1")
     scatter_tsne(axes[0, 1], tsne_2, emotions, "Embeddings of VQ2")
-    scatter_tsne(axes[0, 2], tsne_3, emotions, "Embeddings of VQ3")
-    scatter_tsne(axes[1, 0], tsne_4, emotions, "Embeddings of RVQ")
-    scatter_tsne(axes[1, 1], tsne_5, emotions, "style_extract_fc(styles)")
+    scatter_tsne(axes[1, 0], tsne_3, emotions, "Embeddings of VQ3")
+    scatter_tsne(axes[1, 1], tsne_4, emotions, "Embeddings of RVQ")
+    # scatter_tsne(axes[1, 1], tsne_5, emotions, "style_extract_fc(styles)")
 
     # 마지막 subplot은 비어있음
-    axes[1, 2].set_visible(False)
+    # axes[1, 2].set_visible(False)
 
     # 범례: 첫 번째 subplot에만 예시로 추가(필요 시 다른 방식으로 조정 가능)
     axes[0, 0].legend(loc='best', fontsize=8)
