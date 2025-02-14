@@ -78,15 +78,25 @@ if __name__ == "__main__":
         mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{file_path[:3]}-mel-{file_path}.npy')
         mel = torch.from_numpy(mel).float().to(device).unsqueeze(0)
 
-        pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{file_path}_pitch.npy"
-        energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{file_path}_energy.npy"
+        pitch = np.load(f'preprocessed_data/emo_kr_22050/pitch/{file_path[:3]}-pitch-{file_path}.npy')
+        pitch = torch.from_numpy(pitch).float().to(device).unsqueeze(0)
+
+        energy = np.load(f'preprocessed_data/emo_kr_22050/energy/{file_path[:3]}-energy-{file_path}.npy')
+        energy = torch.from_numpy(energy).float().to(device).unsqueeze(0)
+
+        duration = np.load(f'preprocessed_data/emo_kr_22050/duration/{file_path[:3]}-duration-{file_path}.npy')
+        duration = torch.from_numpy(duration).float().to(device).unsqueeze(0)
+
+
+        # pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{file_path}_pitch.npy"
+        # energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{file_path}_energy.npy"
             
-        pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
-        energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
+        # pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
+        # energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
 
         # style 추출
-        z_mel, z_pitch, z_energy, cls_loss = model.ref_enc(mel, emotion, pitch_mel, energy_mel)
-        style, _, _, codebooks = model.style_extractor(z_mel, z_pitch, z_energy, cls_loss)
+        z_mel, z_pde, cls_loss = model.ref_enc(mel, p_targets=pitch, d_targets=duration, e_targets=energy, emotions=emotion)
+        style, _, _, codebooks = model.style_extractor(z_mel, z_pde, cls_loss)
 
         styles.append(style.cpu().data[:, :])  # 전체 임베딩 (예: 768 차원 등)
 
