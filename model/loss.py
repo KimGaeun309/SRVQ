@@ -182,16 +182,16 @@ class FastSpeech2Loss(nn.Module):
         total_style_loss = style_loss + guided_loss
 
         
-        classifier_loss = torch.zeros_like(mel_loss)
-        # for min_encoding_indice in min_encoding_indices:
-        orig_style_ref_embs = [orig_style_ref_embs[:, :256], orig_style_ref_embs[:, 256:512], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:]]
+        # classifier_loss = torch.zeros_like(mel_loss)
+        # # for min_encoding_indice in min_encoding_indices:
+        # orig_style_ref_embs = [orig_style_ref_embs[:, :256], orig_style_ref_embs[:, 256:512], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:]]
         
-        for style_ref_emb in orig_style_ref_embs:
-            emotions = inputs[3]
-            anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
+        # for style_ref_emb in orig_style_ref_embs:
+        #     emotions = inputs[3]
+        #     anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
 
-            if anchor is not None:
-                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
+        #     if anchor is not None:
+        #         classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
             
             # # Clssifier
             # emotions_pred = min_encoding_indice
@@ -205,7 +205,7 @@ class FastSpeech2Loss(nn.Module):
             
         
         total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss 
+            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss #+ classifier_loss 
         )
         return (
             total_loss,
@@ -217,5 +217,5 @@ class FastSpeech2Loss(nn.Module):
             style_loss, 
             guided_loss,
             vq_loss,
-            classifier_loss,
+            # classifier_loss,
         )
