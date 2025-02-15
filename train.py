@@ -238,52 +238,52 @@ def train(rank, args, configs, batch_size, num_gpus):
                 inner_bar.update(1)
         epoch += 1
 
-        val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
+        # val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
 
-        with open(val_path, encoding='utf-8') as f:
-            val_infos = [line.strip().split("|") for line in f]
+        # with open(val_path, encoding='utf-8') as f:
+        #     val_infos = [line.strip().split("|") for line in f]
 
-        import json
-        with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
-            emotion_map = json.load(f)
+        # import json
+        # with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
+        #     emotion_map = json.load(f)
 
-        val_basenames = []
-        emotions = []
-        styles = []
-        ref_embs = []
+        # val_basenames = []
+        # emotions = []
+        # styles = []
+        # ref_embs = []
 
-        for i in range(len(val_infos)):
-            if i % 25 != 0: continue
-            val_info = val_infos[i]
-            val_basenames.append(val_info[0])
-            emotions.append(emotion_map[val_info[2]])
+        # for i in range(len(val_infos)):
+        #     if i % 25 != 0: continue
+        #     val_info = val_infos[i]
+        #     val_basenames.append(val_info[0])
+        #     emotions.append(emotion_map[val_info[2]])
         
-        for i in range(len(val_basenames)):
-            val_basename = val_basenames[i]
-            emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
-            mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{val_basename[:3]}-mel-{val_basename}.npy')
-            mel = torch.from_numpy(mel).float().to(device)
-            mel = mel.unsqueeze(0)
+        # for i in range(len(val_basenames)):
+        #     val_basename = val_basenames[i]
+        #     emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
+        #     mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{val_basename[:3]}-mel-{val_basename}.npy')
+        #     mel = torch.from_numpy(mel).float().to(device)
+        #     mel = mel.unsqueeze(0)
 
-            # pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{val_basename}_pitch.npy"
-            # energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{val_basename}_energy.npy"
+        #     # pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{val_basename}_pitch.npy"
+        #     # energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{val_basename}_energy.npy"
             
-            # pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
-            # energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
+        #     # pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
+        #     # energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
             
-            # pitch_mel = pad_2D(pitch_mel)
-            # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
-            # energy_mel = pad_2D(energy_mel)print
-            # energy_mel = torch.from_numpy(energy_mel).to('cpu')
+        #     # pitch_mel = pad_2D(pitch_mel)
+        #     # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
+        #     # energy_mel = pad_2D(energy_mel)print
+        #     # energy_mel = torch.from_numpy(energy_mel).to('cpu')
 
-            ref_emb, cls_loss = model.ref_enc(mel, emotion)
-            style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)
+        #     ref_emb, cls_loss = model.ref_enc(mel, emotion)
+        #     style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)
 
-            ref_embs.append(ref_emb)
-            styles.append(style)
+        #     ref_embs.append(ref_emb)
+        #     styles.append(style)
 
-        ref_embs = torch.cat(ref_embs, dim=0)
-        styles = torch.cat(styles, dim=0)
+        # ref_embs = torch.cat(ref_embs, dim=0)
+        # styles = torch.cat(styles, dim=0)
         
         torch.cuda.empty_cache()
 
