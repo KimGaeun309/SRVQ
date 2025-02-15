@@ -67,8 +67,8 @@ if __name__ == "__main__":
         
 
         # style 추출
-        ref_embs, cls_loss = model.ref_enc(mel, emotion) #, pitch_mel, energy_mel)
-        style, _, _, codebooks = model.style_extractor(ref_embs, cls_loss)
+        ref_embs = model.ref_enc(mel, emotion) #, pitch_mel, energy_mel)
+        style, _, _, codebooks = model.style_extractor(ref_embs)
 
         styles.append(style.cpu().data[:, :])
 
