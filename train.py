@@ -285,22 +285,10 @@ def train(rank, args, configs, batch_size, num_gpus):
         ref_embs = torch.cat(ref_embs, dim=0)
         styles = torch.cat(styles, dim=0)
         
-        torch.cuda.empty_cache()
-
-        if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[0].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
-        
-        if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[1].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
-        
-        if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[2].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
+        # torch.cuda.empty_cache()
+        model.style_extractor.vq_layers[0].greedy_restart()
+        model.style_extractor.vq_layers[1].greedy_restart()
+        model.style_extractor.vq_layers[2].greedy_restart()
 
         torch.cuda.empty_cache()
 

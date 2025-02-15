@@ -201,7 +201,7 @@ class ReferenceEncoder_cls(torch.nn.Module): # Original RefEnc
         gru_in_units *= conv_out_chans
         self.gru = torch.nn.GRU(gru_in_units, gru_units, gru_layers, batch_first=True)
 
-        self.emotion_classifier = EmotionClassifier(e_dim, 7)
+        # self.emotion_classifier = EmotionClassifier(e_dim, 7)
 
     def forward(self, speech: torch.Tensor, emotions) -> torch.Tensor:
         """Calculate forward propagation.
@@ -225,13 +225,13 @@ class ReferenceEncoder_cls(torch.nn.Module): # Original RefEnc
 
         # print("ref_embs", ref_embs.shape)
 
-        emotion_preds = self.emotion_classifier(ref_embs)
+        # emotion_preds = self.emotion_classifier(ref_embs)
 
-        # print('emotion_preds', emotion_preds)
+        # # print('emotion_preds', emotion_preds)
 
-        cls_loss = torch.nn.functional.cross_entropy(emotion_preds, emotions)
+        # cls_loss = torch.nn.functional.cross_entropy(emotion_preds, emotions)
 
-        return ref_embs, cls_loss
+        return ref_embs #, cls_loss
 
 class ReferenceEncoderDynamic(torch.nn.Module):
     """Modified ReferenceEncoder for dynamically sized 1D vector inputs."""
@@ -578,7 +578,7 @@ class ResidualVQ_kmeans(torch.nn.Module):
             for _ in range(num_vq)
         ])
 
-    def forward(self, input_vector: torch.Tensor, cls_loss) -> torch.Tensor:
+    def forward(self, input_vector: torch.Tensor) -> torch.Tensor:
         residual = input_vector
         vq_losses = []
         perplexities = []
@@ -605,7 +605,7 @@ class ResidualVQ_kmeans(torch.nn.Module):
             indices_list.append(indices)
 
         # 모든 단계의 손실 합산
-        total_vq_loss = sum(vq_losses) + cls_loss
+        total_vq_loss = sum(vq_losses) # + cls_loss
 
         # 모든 단계의 quantized 코드를 concatenate
         final_quantized = torch.cat(quantized_codes, dim=1)
