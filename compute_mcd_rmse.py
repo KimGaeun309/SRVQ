@@ -55,8 +55,8 @@ import matplotlib.pyplot as plot
 SAMPLING_RATE = 22050
 FRAME_PERIOD = 5.0
 
-ORIGINAL_PATH ='/content/in male voice Bengali and Odia/R1.Regional_Dataset_Male_Voice_in_Bengali' #copy the path of the folder that contains the .wav files of the oriinal voice
-SYNTHESIZED_PATH = '/content/in male voice Bengali and Odia/converted_Bengali' #copy the path of the folder that contains the .wav files of the generated voice
+# ORIGINAL_PATH ='/content/in male voice Bengali and Odia/R1.Regional_Dataset_Male_Voice_in_Bengali' #copy the path of the folder that contains the .wav files of the oriinal voice
+# SYNTHESIZED_PATH = '/content/in male voice Bengali and Odia/converted_Bengali' #copy the path of the folder that contains the .wav files of the generated voice
 
 
 def load_wav(wav_file, sr):
