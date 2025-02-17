@@ -587,7 +587,7 @@ class ResidualVQ_kmeans(torch.nn.Module):
 
         # 각 단계의 VQ Layer 처리
         for layer in self.vq_layers:
-            quantized, vq_loss, indices, _ = layer(residual)
+            quantized, vq_loss, indices, perplexity_1 = layer(residual)
             
             vq_losses.append(vq_loss)
 
@@ -599,6 +599,10 @@ class ResidualVQ_kmeans(torch.nn.Module):
                 e_mean = torch.mean(F.one_hot(indices, num_classes=layer.n_e).float(), dim=0)
                 perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
                 perplexities.append(perplexity)
+
+                # print("RVQ perplexity", perplexity_1, perplexity)
+
+            # print("perplexities", perplexities)
 
             # 출력 저장
             quantized_codes.append(quantized)
