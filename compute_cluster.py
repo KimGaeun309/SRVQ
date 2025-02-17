@@ -98,6 +98,14 @@ if __name__ == "__main__":
     ref_embs, cls_loss = model.ref_enc(mels_torch, emotions_torch) #, pitch_mel, energy_mel)
     styles, _, _, codebooks, perplexity = model.style_extractor(ref_embs, cls_loss)\
     
+
+    # # Perplexity 계산
+    #         with torch.no_grad():
+    #             e_mean = torch.mean(F.one_hot(indices, num_classes=layer.n_e).float(), dim=0)
+    #             perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
+    #             perplexities.append(perplexity)
+
+    
     # torch.mean(torch.stack(perplexities))
 
     print("perplexity :", perplexity)
