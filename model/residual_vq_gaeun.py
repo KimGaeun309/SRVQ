@@ -618,7 +618,7 @@ class ResidualVQ_kmeans(torch.nn.Module):
 
 
 
-        return final_quantized, total_vq_loss, indices_list, codebooks
+        return final_quantized, total_vq_loss, indices_list, codebooks #, perplexities
 
 class ResidualVQ(torch.nn.Module):
     def __init__(

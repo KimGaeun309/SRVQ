@@ -96,7 +96,7 @@ if __name__ == "__main__":
 
             # style 추출
     ref_embs, cls_loss = model.ref_enc(mels_torch, emotions_torch) #, pitch_mel, energy_mel)
-    styles, _, _, codebooks, perplexity = model.style_extractor(ref_embs, cls_loss)\
+    styles, _, _, codebooks, perplexities = model.style_extractor(ref_embs, cls_loss)\
     
 
     # # Perplexity 계산
@@ -106,9 +106,9 @@ if __name__ == "__main__":
     #             perplexities.append(perplexity)
 
     
-    # torch.mean(torch.stack(perplexities))
+    perplexity = torch.mean(torch.stack(perplexities))
 
-    print("perplexity :", perplexity)
+    print("perplexity :", perplexity, perplexities)
 
     # print("styles", styles.shape)
 
