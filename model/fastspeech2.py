@@ -4,6 +4,7 @@ import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from .text2style_aligner import Text2Style_Aligner
 from .style_predictor import StylePredictor, LinearNorm
@@ -142,7 +143,12 @@ class FastSpeech2(nn.Module):
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
 
+        # Load fixed style vectors based on emotion index
+        with open("preprocessed_data/emo_kr_22050/emotions.json", "r") as f:
+            emotion_idx_map = json.load(f)
+        self.reverse_emo_map = {v: k for k, v in emotion_idx_map.items()}
 
+    
     def forward(
         self,
         speakers,
@@ -164,6 +170,8 @@ class FastSpeech2(nn.Module):
         pitch_mel=None,
         energy_mel=None,
         init_flag=False,
+        style_vector=None,
+        blended_label=None,
     ):
         
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
@@ -196,68 +204,133 @@ class FastSpeech2(nn.Module):
 
         if not inference:
             ## Style extractor
-            style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
+            # style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
 
-            if self.model_config["residual_vq"]["num_rvq"] == 4:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
-            elif self.model_config["residual_vq"]["num_rvq"] == 3:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq3
-            elif self.model_config["residual_vq"]["num_rvq"] == 3:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
+            # if self.model_config["residual_vq"]["num_rvq"] == 4:
+            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
+            # elif self.model_config["residual_vq"]["num_rvq"] == 3:
+            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq3
+            # elif self.model_config["residual_vq"]["num_rvq"] == 3:
+            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
             
-            style_pred_embs = self.style_pred_fc(style_pred_embs) # [16, 256*3] -> [16 ,256]
+            # style_pred_embs = self.style_pred_fc(style_pred_embs) # [16, 256*3] -> [16 ,256]
             
 
-            if self.model_config["gst"]["use_gst"]:
-                ref_embs = self.gst(mels)
-                style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
-            else:
+            # if self.model_config["gst"]["use_gst"]:
+            #     ref_embs = self.gst(mels)
+            #     style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
+            # else:
                 
-                # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
-                ref_embs, cls_loss = self.ref_enc(mels, emotions=emotions)
-                if init_flag:
-                    # kmeans_init !!!!
-                    self.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs)
+            #     # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
+            #     ref_embs, cls_loss = self.ref_enc(mels, emotions=emotions)
+            #     if init_flag:
+            #         # kmeans_init !!!!
+            #         self.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs)
 
-                style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, cls_loss) 
-                # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
+            #     style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, cls_loss) 
+            #     # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
 
-                if init_flag:
-                    self.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256])
-                    self.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256] - style_ref_embs[:, 256:512])
+            #     if init_flag:
+            #         self.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256])
+            #         self.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256] - style_ref_embs[:, 256:512])
                     
             # style_ref_embs shape : [16, 256*3]   
 
-            orig_style_ref_embs = style_ref_embs
+            # orig_style_ref_embs = style_ref_embs
 
-            style_ref_embs = self.style_extract_fc(style_ref_embs) 
-            # self.style_extract_fc : 256*3 -> 256 Linear Layer
+            # style_ref_embs = self.style_extract_fc(style_ref_embs) 
+            # # self.style_extract_fc : 256*3 -> 256 Linear Layer
 
-            # output shape : [16, 86, 256] / style_ref_embs shape : [16, 256]
+            # # output shape : [16, 86, 256] / style_ref_embs shape : [16, 256]
+
+            
+            # 감정 index → 감정 라벨 → style vector
+
+            if style_vector is not None:
+                
+                style_vectors = style_vector  # shape (B, 768)
+
+                codebook = torch.split(style_vectors, 256, dim=1)  # vq3 기준
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+
+                orig_style_ref_embs = style_vectors
+                style_pred_embs = self.style_extract_fc(style_vectors)
+                style_ref_embs = style_pred_embs
+                style_reconstructed = True
+            else:
+                style_vectors = []
+                style_reconstructed = None
+                for emo_idx in emotions:
+                    emo_label = self.reverse_emo_map[emo_idx.item()]
+                    vec = np.load(f"emotion_style_vectors_mode/{emo_label}_style.npy")
+                    vec = torch.from_numpy(vec).float().to(output.device)
+                    style_vectors.append(vec)
+
+                style_vectors = torch.stack(style_vectors, dim=0)  # [B, 768]
+
+                codebook = torch.split(style_vectors, 256, dim=1) # vq3
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+
+                orig_style_ref_embs = style_vectors
+                style_pred_embs = self.style_extract_fc(style_vectors)  # [B, 256]
+
+                style_ref_embs = style_pred_embs
 
             output = output + style_ref_embs.unsqueeze(1)
 
             positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
+
             prosody_embedding = style_ref_embs.unsqueeze(1) + positions
 
+            vq_loss, min_encoding_indices = torch.tensor(0.0, device=output.device), None
+
         else:
+            style_reconstructed = None
+            # print("inference")
+            # assert style_vector is not None, "style_vector must be provided during inference"
+            if style_vector is None:
+                # Load style vector from npy file based on emotion label
+                style_vectors = []
+                for emo_idx in emotions:
+                    emo_label = self.reverse_emo_map[emo_idx.item()]
+                    vec = np.load(f"emotion_style_vectors_mode/{emo_label}_style.npy")
+                    vec = torch.from_numpy(vec).float().to(output.device)
+                    style_vectors.append(vec)
+
+                style_vector = torch.stack(style_vectors, dim=0)  # [B, 768]
+
+            style_pred_embs = style_vector  # [B, 768]
+            
+            # style_pred_embs = style_vector.squeeze().unsqueeze(0)
+
+            # print("style_pred_embs", style_pred_embs.shape)
+        
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
-            style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
+            # style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
             if self.model_config["residual_vq"]["num_rvq"] == 4:
                 style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
             elif self.model_config["residual_vq"]["num_rvq"] == 3:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq3
+                # style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq3
                 codebook = torch.split(style_pred_embs, 256, dim=1) # vq3
                 codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]] # vq3
             elif self.model_config["residual_vq"]["num_rvq"] == 2:
                 style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
 
+            style_pred_embs = self.style_extract_fc(style_vector)  # (B, 256)
+
             
-            style_pred_embs = self.style_pred_fc(style_pred_embs)
+            # style_pred_embs = self.style_pred_fc(style_pred_embs)
+
+            # print("output", output.shape)
+            # print("style_pred_embs", style_pred_embs.shape)
 
             output = output + style_pred_embs.unsqueeze(1)
             positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])
             prosody_embedding = style_pred_embs.unsqueeze(1) + positions
+
+            # style_pred_embs = style_pred_embs.expand(-1, output.shape[1], -1)  # (1, Tph, 256)
+            # positions = self.embed_positions(style_pred_embs[:, :, 0])
+            # prosody_embedding = style_pred_embs + positions
 
         src_key_padding_mask = output[:, :, 0].eq(self.padding_idx).data
         prosody_key_padding_mask = prosody_embedding[:, :, 0].eq(self.padding_idx).data
@@ -303,6 +376,9 @@ class FastSpeech2(nn.Module):
         # Post-net
         postnet_output = self.postnet(output) + output
 
+        if style_reconstructed == True:
+            style_reconstructed, _ = self.ref_enc(postnet_output.detach(), emotions)
+
         # Loss
         guided_loss = guided_loss_1 + guided_loss_2
 
@@ -323,4 +399,6 @@ class FastSpeech2(nn.Module):
             vq_loss,
             min_encoding_indices,
             orig_style_ref_embs, # Edit!
+            style_reconstructed, # Edit!
+            blended_label,
         )

@@ -133,7 +133,9 @@ class FastSpeech2Loss(nn.Module):
             guided_loss,
             vq_loss,
             min_encoding_indices,
-            orig_style_ref_embs
+            orig_style_ref_embs,
+            style_reconstructed,
+            blended_labels,
         ) = predictions
 
         src_masks = ~src_masks
@@ -182,16 +184,16 @@ class FastSpeech2Loss(nn.Module):
         total_style_loss = style_loss + guided_loss
 
         
-        classifier_loss = torch.zeros_like(mel_loss)
-        # for min_encoding_indice in min_encoding_indices:
-        orig_style_ref_embs = [orig_style_ref_embs[:, :256], orig_style_ref_embs[:, 256:512], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:]]
-        
-        for style_ref_emb in orig_style_ref_embs:
-            emotions = inputs[3]
-            anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
-
-            if anchor is not None:
-                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
+#        classifier_loss = torch.zeros_like(mel_loss)
+#        # for min_encoding_indice in min_encoding_indices:
+#        orig_style_ref_embs = [orig_style_ref_embs[:, :256], orig_style_ref_embs[:, 256:512], orig_style_ref_embs[:, 256:384], orig_style_ref_embs[:, 384:512], orig_style_ref_embs[:, 512:]]
+#        
+#        for style_ref_emb in orig_style_ref_embs:
+#            emotions = inputs[3]
+#            anchor, positive, negative = create_triplet_samples(style_ref_emb, emotions)
+#
+#            if anchor is not None:
+#                classifier_loss += self.triplet_margin_loss_fn(anchor, positive, negative) * 0.5
             
             # # Clssifier
             # emotions_pred = min_encoding_indice
@@ -202,10 +204,40 @@ class FastSpeech2Loss(nn.Module):
 
             # classifier_loss += self.criterion(emotions_pred, emotions) * 0.05
 
-            
+        # inputs[10]: soft label (blended_labels), shape: (B, num_emotions)
+        # blended_labels = inputs[10]  # already torch.Tensor, device aligned
+
+
+        # blended_labels = blended_labels + 1e-8  # or 1e-5
+        # blended_labels = blended_labels / blended_labels.sum(dim=-1, keepdim=True)
+
+        # print("blended_labels min:", blended_labels.min().item())
+        # print("blended_labels max:", blended_labels.max().item())
+        # print("blended_labels sum per sample:", blended_labels.sum(dim=-1))
+
+        #print("blended_labels", blended_labels)
+        classifier_loss = torch.tensor(0.0).to(mel_targets.device)
+
+        # RVQ로부터 추출된 codebook vector들의 concat 결과를 감정 분포로 분류하도록 학습
+        # style_ref_embs: (B, 256)
+        # 감정 분류기 정의 (학습 시 사용됨)
+        if blended_labels is not None:
+            emotion_classifier = nn.Linear(style_ref_embs.shape[-1], blended_labels.shape[-1]).to(style_ref_embs.device)
+            pred_logits = emotion_classifier(style_ref_embs)  # (B, num_emotions)
+
+            classifier_loss = F.kl_div(
+                F.log_softmax(pred_logits, dim=-1),
+                blended_labels,
+                reduction="batchmean"
+            ) * 1.0  # scale 조절 가능
+
+        
+        style_consistency_loss = torch.tensor(0.0).to(mel_targets.device)
+        if style_reconstructed is not None:
+            style_consistency_loss = self.mae_loss(style_reconstructed, style_pred_embs.detach()) * 10
         
         total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss 
+            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss + style_consistency_loss
         )
         return (
             total_loss,
@@ -218,4 +250,5 @@ class FastSpeech2Loss(nn.Module):
             guided_loss,
             vq_loss,
             classifier_loss,
+            style_consistency_loss,
         )

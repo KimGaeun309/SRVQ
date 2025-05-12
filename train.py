@@ -1,5 +1,6 @@
 import os
 import argparse
+import re
 
 import librosa
 import torch
@@ -11,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader
+import random
 
 from utils.tools import pad_1D, pad_2D
 
@@ -21,6 +23,7 @@ from evaluate import evaluate
 from model import FastSpeech2Loss
 from utils.model import get_model, get_vocoder, get_param_num
 from utils.tools import get_configs_of, to_device, log, synth_one_sample
+import json
 
 torch.backends.cudnn.benchmark = True
 
@@ -52,6 +55,14 @@ def train(rank, args, configs, batch_size, num_gpus):
 
     # Prepare model
     model, optimizer = get_model(args, configs, device, train=True)
+    for param in model.style_predictor.parameters():
+        param.requires_grad = False
+    # for param in model.ref_enc.parameters():
+    #     param.requires_grad = False
+    # for param in model.style_extractor.parameters():
+    #     param.requires_grad = False
+    # for param in model.style_extract_fc.parameters():
+    #     param.requires_grad = False
     if num_gpus > 1:
         model = DistributedDataParallel(model, device_ids=[rank], find_unused_parameters=True).to(device)
     scaler = amp.GradScaler(enabled=args.use_amp)
@@ -61,7 +72,8 @@ def train(rank, args, configs, batch_size, num_gpus):
     vocoder = get_vocoder(model_config, device)
 
     # Training
-    step = args.restore_step + 1
+    step = int(re.search(r"(\d+)", args.restore_step).group(1)) + 1
+    # step = args.restore_step + 1
     epoch = 1
     grad_acc_step = train_config["optimizer"]["grad_acc_step"]
     grad_clip_thresh = train_config["optimizer"]["grad_clip_thresh"]
@@ -84,7 +96,8 @@ def train(rank, args, configs, batch_size, num_gpus):
         val_logger = SummaryWriter(val_log_path)
 
         outer_bar = tqdm(total=total_step, desc="Training", position=0)
-        outer_bar.n = args.restore_step
+        # outer_bar.n = args.restore_step
+        outer_bar.n = int(re.search(r"(\d+)", args.restore_step).group(1))
         outer_bar.update()
 
     train = True
@@ -100,6 +113,48 @@ def train(rank, args, configs, batch_size, num_gpus):
                 break
             for batch in batchs:
                 batch = to_device(batch, device)
+
+                
+                # 감정 mapping 정보 불러오기
+                with open("preprocessed_data/emo_kr_22050/emotions.json", "r") as f:
+                    emotion_map = json.load(f)
+                reverse_emo_map = {v: k for k, v in emotion_map.items()}
+                emotion_list = list(emotion_map.keys())  # ['neu', 'ang', ..., 'hap']
+
+                # emotion blending vector 생성
+                style_vectors = []
+                blended_labels = []
+                for _ in batch[0]:  # for each utterance
+                    emo_a, emo_b = random.sample(emotion_list, 2)
+                    alpha = random.uniform(0.0, 1.0)
+
+                    vec_a = np.load(f"emotion_style_vectors_mode/{emo_a}_style.npy")
+                    vec_b = np.load(f"emotion_style_vectors_mode/{emo_b}_style.npy")
+                    blended_vec = alpha * vec_a + (1 - alpha) * vec_b
+                    blended_vec = torch.from_numpy(blended_vec).float().to(device)
+                    style_vectors.append(blended_vec)
+
+                    # soft label 생성
+                    label_vec = torch.zeros(len(emotion_list)).to(device)
+                    idx_a = emotion_map[emo_a]
+                    idx_b = emotion_map[emo_b]
+                    if idx_a == idx_b:
+                        label_vec[idx_a] = 1.0
+                    else:
+                        label_vec[idx_a] = alpha
+                        label_vec[idx_b] = 1 - alpha
+
+                    # 안정화 및 정규화
+                    # label_vec += 1e-8
+                    # label_vec = label_vec / label_vec.sum()
+                    blended_labels.append(label_vec)
+
+                # 텐서화
+                style_vector = torch.stack(style_vectors, dim=0)
+                blended_label = torch.stack(blended_labels, dim=0)
+
+                # print("blended_label", blended_label)
+
                 
                 basenames = batch[0]
                 
@@ -119,7 +174,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                 with amp.autocast(args.use_amp):
                     # Forward
-                    output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag) # To do Step
+                    output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag, style_vector=style_vector, blended_label=blended_label) # To do Step
                     init_flag = False
 
                     # Cal Loss
@@ -144,7 +199,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                         message1 = "Step {}/{}, ".format(step, total_step)
-                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}".format( 
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}, recon_loss: {:.4f}".format( 
                             ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
                             *losses_
                         )
@@ -195,7 +250,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                         outer_bar.write(message)
 
                         model.train()
-
+                        
                         if losses[9].mean() > 0.4:
                             init_flag = True   
 
@@ -227,6 +282,9 @@ def train(rank, args, configs, batch_size, num_gpus):
                             ),
                         )
 
+                        os.system(f"python3 check_code_index.py --dataset icassp_2024 --restore_step {step} --dataset {args.dataset}")
+
+
                 if step == total_step:
                     train = False
                     break
@@ -243,7 +301,6 @@ def train(rank, args, configs, batch_size, num_gpus):
         with open(val_path, encoding='utf-8') as f:
             val_infos = [line.strip().split("|") for line in f]
 
-        import json
         with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
             emotion_map = json.load(f)
 
@@ -287,20 +344,20 @@ def train(rank, args, configs, batch_size, num_gpus):
         
         torch.cuda.empty_cache()
 
-        if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[0].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
+        # if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
+        #     model.style_extractor.vq_layers[0].greedy_restart()
+        # else:
+        #     model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
         
-        if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[1].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
+        # if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
+        #     model.style_extractor.vq_layers[1].greedy_restart()
+        # else:
+        #     model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
         
-        if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[2].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
+        # if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
+        #     model.style_extractor.vq_layers[2].greedy_restart()
+        # else:
+        #     model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
         torch.cuda.empty_cache()
 
@@ -321,7 +378,7 @@ if __name__ == "__main__":
     assert torch.cuda.is_available(), 'CPU training is not allowed.'
     parser = argparse.ArgumentParser()
     parser.add_argument('--use_amp', action='store_true')
-    parser.add_argument('--restore_step', type=int, default=0)
+    parser.add_argument('--restore_step', type=str, default=0)
     parser.add_argument(
         '--dataset',
         type=str,
