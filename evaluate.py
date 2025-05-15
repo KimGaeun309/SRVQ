@@ -7,6 +7,7 @@ from dataset import Dataset
 
 import numpy as np
 from utils.tools import pad_1D, pad_2D
+import json
 
 def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=None):
     preprocess_config, model_config, train_config = configs
@@ -48,11 +49,32 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
             # energy_mel = pad_2D(energy_mel)
             # energy_mel = torch.from_numpy(energy_mel).to('cuda')
             
+            with open("preprocessed_data/emo_kr_22050/emotions.json", "r") as f:
+                emotion_map = json.load(f)
+            reverse_emo_map = {v: k for k, v in emotion_map.items()}
+            emotion_list = list(emotion_map.keys())
+
+            style_vectors, blended_labels = [], []
+
+            for emo_idx in batch[3]:  # emotions
+                emo_label = reverse_emo_map[emo_idx.item()]
+                
+                vec = np.load(f"emotion_style_vectors_mode/{emo_label}_style.npy")
+                vec = torch.from_numpy(vec).float().to(device)
+                style_vectors.append(vec)
+
+                label_vec = torch.zeros(len(emotion_list)).to(device)
+                label_vec[emo_idx.item()] = 1.0
+                blended_labels.append(label_vec)
+
+            style_vector = torch.stack(style_vectors, dim=0)
+            blended_label = torch.stack(blended_labels, dim=0)
+
 
 
             with torch.no_grad():
                 # Forward
-                output = model(*(batch[2:]), step=step, inference=False,  pitch_mel=pitch_mel, energy_mel=energy_mel,) # To do Step
+                output = model(*(batch[2:]), step=step, inference=False,  pitch_mel=pitch_mel, energy_mel=energy_mel, style_vector=style_vector, blended_label=blended_label) # To do Step
 
                 # Cal Loss
                 losses = Loss(batch, output, step=step)

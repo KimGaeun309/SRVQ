@@ -325,6 +325,7 @@ class VectorQuantizer_kmeans(nn.Module):
 
         self.perplexity = None
         self.loss = None
+        self.fixed_indices = torch.arange(7)
     # ------------------------------------------------------------------
 
     # 1) 코드북을 k-means로 초기화하는 함수
@@ -374,7 +375,7 @@ class VectorQuantizer_kmeans(nn.Module):
         data: Tensor shape (M, e_dim)
             이번 epoch (혹은 일정 주기) 동안 모은 latent 샘플
         """
-        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
+        dead_codes = torch.nonzero((self.usage < self.usage_threshold) & (torch.arange(self.n_e) >= 7)).squeeze(1)
         num_dead = len(dead_codes)
         if num_dead == 0:
             print("[reset_dead_codes_kmeans] No dead codes. Skip.")
@@ -421,7 +422,7 @@ class VectorQuantizer_kmeans(nn.Module):
 
     def random_restart(self):
         #  randomly restart all dead codes below threshold with random code in codebook
-        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
+        dead_codes = torch.nonzero((self.usage < self.usage_threshold) & (torch.arange(self.n_e) >= 7)).squeeze(1)
         rand_codes = torch.randperm(self.n_e)[0:len(dead_codes)]
         with torch.no_grad():
             self.embedding.weight[dead_codes] = self.embedding.weight[rand_codes]
@@ -436,7 +437,7 @@ class VectorQuantizer_kmeans(nn.Module):
         usage가 가장 높은 코드들(Top-K)의 임베딩으로 교체한다.
         """
         # 1) dead_codes 탐색
-        dead_codes = torch.nonzero(self.usage < self.usage_threshold).squeeze(1)
+        dead_codes = torch.nonzero((self.usage < self.usage_threshold) & (torch.arange(self.n_e) >= 7)).squeeze(1)
         
         # 2) 사용 빈도가 높은 순서대로 정렬 후, dead_codes 개수만큼 가져오기
         # argsort()로 내림차순 정렬하면 usage가 큰 인덱스부터 순서대로 정렬되므로

@@ -15,13 +15,31 @@ def get_model(args, configs, device, train=False):
     print("device", device)
 
     model = FastSpeech2(preprocess_config, model_config).to(device)
-    
+    frozen_codebooks = []  # ✅ 여기서 초기화
+
     if args.restore_step:
         ckpt_path = os.path.join(
             train_config["path"]["ckpt_path"],
             "{}.pth.tar".format(args.restore_step),
         )
         ckpt = torch.load(ckpt_path, map_location=torch.device(device), weights_only=False)
+
+        for i, vq in enumerate(model.style_extractor.vq_layers):
+            key = f"style_extractor.vq_layers.{i}.embedding.weight"
+            if key in ckpt["model"]:
+                old_weight = ckpt["model"][key]  # shape [7, e_dim]
+                if old_weight.shape[0] > 7:
+                    break
+                n_e = 64
+                e_dim = old_weight.shape[1]
+
+                uniform_range = 1.0 / n_e
+                new_weight = torch.empty(n_e, e_dim).uniform_(-uniform_range, uniform_range).to(old_weight.device)
+                new_weight[:7] = old_weight  # 상위 7개는 유지
+                ckpt["model"][key] = new_weight.to(device)
+
+                frozen_codebooks.append(old_weight.clone().to(device))  # ✅ 7개 고정값 저장
+
         model.load_state_dict(ckpt["model"])
 
     if train:
@@ -31,11 +49,12 @@ def get_model(args, configs, device, train=False):
         if args.restore_step:
             scheduled_optim.load_state_dict(ckpt["optimizer"])
         model.train()
-        return model, scheduled_optim
+        return model, scheduled_optim, frozen_codebooks  # ✅ frozen_codebooks도 반환
 
     model.eval()
     model.requires_grad_ = False
     return model
+
 
 
 def get_param_num(model):

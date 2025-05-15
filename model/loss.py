@@ -222,14 +222,22 @@ class FastSpeech2Loss(nn.Module):
         # style_ref_embs: (B, 256)
         # 감정 분류기 정의 (학습 시 사용됨)
         if blended_labels is not None:
+            # print("blended_labels", blended_labels)
+            # blended_labels = blended_labels + 1e-8
+            # blended_labels = blended_labels / blended_labels.sum(dim=-1, keepdim=True)
             emotion_classifier = nn.Linear(style_ref_embs.shape[-1], blended_labels.shape[-1]).to(style_ref_embs.device)
             pred_logits = emotion_classifier(style_ref_embs)  # (B, num_emotions)
+
+            # print("pred_logits", pred_logits)
+
 
             classifier_loss = F.kl_div(
                 F.log_softmax(pred_logits, dim=-1),
                 blended_labels,
                 reduction="batchmean"
             ) * 1.0  # scale 조절 가능
+
+            # print("cls_loss", classifier_loss)
 
         
         style_consistency_loss = torch.tensor(0.0).to(mel_targets.device)

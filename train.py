@@ -23,7 +23,7 @@ from evaluate import evaluate
 from model import FastSpeech2Loss
 from utils.model import get_model, get_vocoder, get_param_num
 from utils.tools import get_configs_of, to_device, log, synth_one_sample
-import json
+import json 
 
 torch.backends.cudnn.benchmark = True
 
@@ -54,7 +54,8 @@ def train(rank, args, configs, batch_size, num_gpus):
     )
 
     # Prepare model
-    model, optimizer = get_model(args, configs, device, train=True)
+    model, optimizer, frozen_codebooks = get_model(args, configs, device, train=True)
+
     for param in model.style_predictor.parameters():
         param.requires_grad = False
     # for param in model.ref_enc.parameters():
@@ -185,6 +186,10 @@ def train(rank, args, configs, batch_size, num_gpus):
                 # Backward
                 scaler.scale(total_loss).backward()
 
+                for i, vq_layer in enumerate(model.style_extractor.vq_layers):
+                    with torch.no_grad():
+                        vq_layer.embedding.weight[:7] = frozen_codebooks[i]
+
                 # Clipping gradients to avoid gradient explosion
                 if step % grad_acc_step == 0:
                     scaler.unscale_(optimizer._optimizer)
@@ -282,7 +287,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                             ),
                         )
 
-                        os.system(f"python3 check_code_index.py --dataset icassp_2024 --restore_step {step} --dataset {args.dataset}")
+                        # os.system(f"python3 check_code_index.py --dataset icassp_2024 --restore_step {step} --dataset {args.dataset}")
 
 
                 if step == total_step:

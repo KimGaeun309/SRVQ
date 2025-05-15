@@ -109,7 +109,7 @@ class FastSpeech2(nn.Module):
             e_dim=model_config["residual_vq"]["vq_hidden"],
         )
         self.style_extractor = ResidualVQ_kmeans(
-            n_e=n_emotion,
+            n_e=64, #  수정함
             e_dim=model_config["residual_vq"]["vq_hidden"],
             num_vq=model_config["residual_vq"]["num_rvq"],
         )
@@ -377,7 +377,9 @@ class FastSpeech2(nn.Module):
         postnet_output = self.postnet(output) + output
 
         if style_reconstructed == True:
-            style_reconstructed, _ = self.ref_enc(postnet_output.detach(), emotions)
+            style_reconstructed, cls_loss = self.ref_enc(postnet_output.detach(), emotions)
+            style_reconstructed, _, _, _ = self.style_extractor(style_reconstructed, cls_loss)
+            style_reconstructed = self.style_extract_fc(style_reconstructed)
 
         # Loss
         guided_loss = guided_loss_1 + guided_loss_2
