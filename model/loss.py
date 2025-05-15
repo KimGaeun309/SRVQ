@@ -245,7 +245,7 @@ class FastSpeech2Loss(nn.Module):
             style_consistency_loss = self.mae_loss(style_reconstructed, style_pred_embs.detach()) * 10
         
         total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss + style_consistency_loss
+            classifier_loss + style_consistency_loss
         )
         return (
             total_loss,
