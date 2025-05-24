@@ -321,7 +321,7 @@ if __name__ == "__main__":
     assert torch.cuda.is_available(), 'CPU training is not allowed.'
     parser = argparse.ArgumentParser()
     parser.add_argument('--use_amp', action='store_true')
-    parser.add_argument('--restore_step', type=int, default=0)
+    parser.add_argument('--restore_step', type=str, default=0)
     parser.add_argument(
         '--dataset',
         type=str,
