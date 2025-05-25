@@ -346,7 +346,7 @@ class VectorQuantizer_kmeans(nn.Module):
 
         # n_clusters = self.n_e 로 맞춰서 실행
 
-        kmeans = KMeans(n_clusters=self.n_e, random_state=0, max_iter=max_iter)
+        kmeans = KMeans(n_clusters=7, random_state=0, max_iter=max_iter)
 
         kmeans.fit(data_np)
 
