@@ -109,7 +109,7 @@ class FastSpeech2(nn.Module):
             e_dim=model_config["residual_vq"]["vq_hidden"],
         )
         self.style_extractor = ResidualVQ_kmeans(
-            n_e=64, #  수정함
+            n_e=7, #  수정함
             e_dim=model_config["residual_vq"]["vq_hidden"],
             num_vq=model_config["residual_vq"]["num_rvq"],
         )
@@ -223,16 +223,16 @@ class FastSpeech2(nn.Module):
                 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
                 ref_embs, cls_loss = self.ref_enc(mels, emotions=emotions)
-                # if init_flag:
-                #     # kmeans_init !!!!
-                #     self.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs)
+                if init_flag:
+                    # kmeans_init !!!!
+                    self.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs)
 
                 style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, cls_loss) 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
 
-                # if init_flag:
-                #     self.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256])
-                #     self.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256] - style_ref_embs[:, 256:512])
+                if init_flag:
+                    self.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256])
+                    self.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256] - style_ref_embs[:, 256:512])
                     
             # style_ref_embs shape : [16, 256*3]   
 

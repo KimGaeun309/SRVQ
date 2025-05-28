@@ -73,7 +73,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     vocoder = get_vocoder(model_config, device)
 
     # Training
-    step = int(re.search(r"(\d+)", args.restore_step).group(1)) + 1
+    step = args.restore_step + 1
     # step = args.restore_step + 1
     epoch = 1
     grad_acc_step = train_config["optimizer"]["grad_acc_step"]
@@ -97,12 +97,12 @@ def train(rank, args, configs, batch_size, num_gpus):
         val_logger = SummaryWriter(val_log_path)
 
         outer_bar = tqdm(total=total_step, desc="Training", position=0)
-        # outer_bar.n = args.restore_step
-        outer_bar.n = int(re.search(r"(\d+)", args.restore_step).group(1))
+        outer_bar.n = args.restore_step
+        # outer_bar.n = int(re.search(r"(\d+)", args.restore_step).group(1))
         outer_bar.update()
 
     train = True
-    init_flag = True
+    init_flag = False
     model.train()
     while train:
         if rank == 0:
@@ -256,8 +256,8 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                         model.train()
                         
-                        if losses[9].mean() > 0.4:
-                            init_flag = True   
+                        # if losses[9].mean() > 0.4:
+                        #     init_flag = True   
 
                         # if epoch < 5:
                         #     init_flag = True
@@ -335,7 +335,7 @@ def train(rank, args, configs, batch_size, num_gpus):
             
             # pitch_mel = pad_2D(pitch_mel)
             # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
-            # energy_mel = pad_2D(energy_mel)print
+            # energy_mel = pad_2D(energy_mel)
             # energy_mel = torch.from_numpy(energy_mel).to('cpu')
 
             ref_emb, cls_loss = model.ref_enc(mel, emotion)
@@ -349,20 +349,20 @@ def train(rank, args, configs, batch_size, num_gpus):
         
         torch.cuda.empty_cache()
 
-        # if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
-        #     model.style_extractor.vq_layers[0].greedy_restart()
-        # else:
-        #     model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
+        if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
+            model.style_extractor.vq_layers[0].greedy_restart()
+        else:
+            model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
         
-        # if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
-        #     model.style_extractor.vq_layers[1].greedy_restart()
-        # else:
-        #     model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
+        if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
+            model.style_extractor.vq_layers[1].greedy_restart()
+        else:
+            model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
         
-        # if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
-        #     model.style_extractor.vq_layers[2].greedy_restart()
-        # else:
-        #     model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
+        if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
+            model.style_extractor.vq_layers[2].greedy_restart()
+        else:
+            model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
         torch.cuda.empty_cache()
 
@@ -383,7 +383,7 @@ if __name__ == "__main__":
     assert torch.cuda.is_available(), 'CPU training is not allowed.'
     parser = argparse.ArgumentParser()
     parser.add_argument('--use_amp', action='store_true')
-    parser.add_argument('--restore_step', type=str, default=0)
+    parser.add_argument('--restore_step', type=int, default=0)
     parser.add_argument(
         '--dataset',
         type=str,
