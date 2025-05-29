@@ -107,6 +107,7 @@ class FastSpeech2Loss(nn.Module):
         self.mae_loss = nn.L1Loss()
         self.criterion = nn.CrossEntropyLoss()
         self.triplet_margin_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
+        self.emotion_classifier = nn.Linear(256, 7)
 
     def forward(self, inputs, predictions, step):
         (
@@ -218,36 +219,45 @@ class FastSpeech2Loss(nn.Module):
         #print("blended_labels", blended_labels)
 
 
-        # classifier_loss = torch.tensor(0.0).to(mel_targets.device)
+        classifier_loss = torch.tensor(0.0).to(mel_targets.device)
 
-        # # RVQ로부터 추출된 codebook vector들의 concat 결과를 감정 분포로 분류하도록 학습
-        # # style_ref_embs: (B, 256)
-        # # 감정 분류기 정의 (학습 시 사용됨)
-        # if blended_labels is not None:
-        #     # print("blended_labels", blended_labels)
-        #     # blended_labels = blended_labels + 1e-8
-        #     # blended_labels = blended_labels / blended_labels.sum(dim=-1, keepdim=True)
-        #     emotion_classifier = nn.Linear(style_ref_embs.shape[-1], blended_labels.shape[-1]).to(style_ref_embs.device)
-        #     pred_logits = emotion_classifier(style_ref_embs)  # (B, num_emotions)
+        # RVQ로부터 추출된 codebook vector들의 concat 결과를 감정 분포로 분류하도록 학습
+        # style_ref_embs: (B, 256)
+        # 감정 분류기 정의 (학습 시 사용됨)
 
-        #     # print("pred_logits", pred_logits)
+        # print("blended_labels[0]", blended_labels[0])
+
+        if blended_labels is not None:
+            # print("blended_labels", blended_labels)
+            blended_labels = blended_labels + 1e-8
+            blended_labels = blended_labels / blended_labels.sum(dim=-1, keepdim=True)
+            # emotion_classifier = nn.Linear(style_ref_embs.shape[-1], blended_labels.shape[-1]).to(style_ref_embs.device)
+            pred_logits = self.emotion_classifier(style_ref_embs)  # (B, num_emotions)
+
+            # print("pred_logits", pred_logits)
 
 
-        #     classifier_loss = F.kl_div(
-        #         F.log_softmax(pred_logits, dim=-1),
-        #         blended_labels,
-        #         reduction="batchmean"
-        #     ) * 1.0  # scale 조절 가능
+            # print("pred_logits[0]", pred_logits[0])
+            
 
-        #     # print("cls_loss", classifier_loss)
+
+            classifier_loss = F.kl_div(
+                F.log_softmax(pred_logits, dim=-1),
+                blended_labels,
+                reduction="batchmean"
+            ) * 1.0  # scale 조절 가능
+
+            # print("cls_loss", classifier_loss)
 
         
-        # style_consistency_loss = torch.tensor(0.0).to(mel_targets.device)
-        # if style_reconstructed is not None:
-        #     style_consistency_loss = self.mae_loss(style_reconstructed, style_pred_embs.detach()) * 10
+        style_consistency_loss = torch.tensor(0.0).to(mel_targets.device)
+        if style_reconstructed is not None:
+            style_consistency_loss = self.mae_loss(style_reconstructed, style_ref_embs.detach()) * 10
         
         # mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss +
-        total_loss = style_consistency_loss
+        total_loss = (
+            classifier_loss + style_consistency_loss
+        )
         
         return (
             total_loss,

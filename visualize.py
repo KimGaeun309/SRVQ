@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     model = get_model(args, configs, device, train=False)
 
-    styles = []
+    styles, style_embs = [], []
     for i in range(len(file_path_list)):
         file_path = file_path_list[i]
         emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
@@ -70,18 +70,26 @@ if __name__ == "__main__":
         ref_embs, cls_loss = model.ref_enc(mel, emotion) #, pitch_mel, energy_mel)
         style, _, _, codebooks = model.style_extractor(ref_embs, cls_loss)
 
+        style_emb = model.style_extract_fc(style)
+        style_embs.append(style_emb.cpu().data[:, :])
+
         styles.append(style.cpu().data[:, :])
 
     emotions = np.array(emotions)
     styles = torch.cat(styles, dim=0)
+    style_embs = torch.cat(style_embs, dim=0)
 
     colors = ['red', 'blue', 'green', 'yellow', 'brown', 'indigo', 'black']
     labels = ['ang', 'anx', 'emb', 'hap', 'hur', 'neu', 'sad']
 
-    data_x_1 = styles[:, 0:256].numpy()
-    data_x_2 = styles[:, 256:512].numpy()
-    data_x_3 = styles[:, 512:].numpy()
-    data_x_4 = styles[:, :].numpy()
+    data_x_1 = styles[:, :].numpy()
+    data_x_2 = style_embs[:, :].numpy()
+    data_x_3 = styles[:, 0:256].numpy()
+    data_x_4 = styles[:, 256:512].numpy()
+    data_x_5 = styles[:, 512:].numpy()
+    
+
+    print("data_x_5", data_x_5.shape)
 
     def run_tsne(data, perplexity=20, n_iter=2000):
         if data.shape[1] == 0:
@@ -93,8 +101,9 @@ if __name__ == "__main__":
     tsne_2 = run_tsne(data_x_2)
     tsne_3 = run_tsne(data_x_3)
     tsne_4 = run_tsne(data_x_4)
+    tsne_5 = run_tsne(data_x_5)
 
-    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
 
     def scatter_tsne(ax, tsne_data, data_y, title=False):
         if tsne_data is None:
@@ -113,6 +122,7 @@ if __name__ == "__main__":
     scatter_tsne(axes[0, 1], tsne_2, emotions)
     scatter_tsne(axes[1, 0], tsne_3, emotions)
     scatter_tsne(axes[1, 1], tsne_4, emotions)
+    scatter_tsne(axes[1, 2], tsne_5, emotions)
 
     axes[0, 0].legend(loc='best', fontsize=8)
 
@@ -125,7 +135,7 @@ if __name__ == "__main__":
     plt.savefig('tsne_combined.png', dpi=300)
     plt.close()
 
-    for idx, (tsne_data, title) in enumerate(zip([tsne_1, tsne_2, tsne_3, tsne_4], ["VQ1", "VQ2", "VQ3", "RVQ"])):
+    for idx, (tsne_data, title) in enumerate(zip([tsne_1, tsne_2, tsne_3, tsne_4, tsne_5], ["RVQ", "S", "VQ1", "VQ2", "VQ3"])):
         fig, ax = plt.subplots(figsize=(5, 5))
         scatter_tsne(ax, tsne_data, emotions, title)
         ax.legend(loc='best', fontsize=8)

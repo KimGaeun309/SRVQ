@@ -54,7 +54,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     )
 
     # Prepare model
-    model, optimizer = get_model(args, configs, device, train=True)
+    model, optimizer, frozen_codebooks = get_model(args, configs, device, train=True)
 
     for param in model.style_predictor.parameters():
         param.requires_grad = False
@@ -122,37 +122,37 @@ def train(rank, args, configs, batch_size, num_gpus):
                 reverse_emo_map = {v: k for k, v in emotion_map.items()}
                 emotion_list = list(emotion_map.keys())  # ['neu', 'ang', ..., 'hap']
 
-                # # emotion blending vector 생성
-                # style_vectors = []
-                # blended_labels = []
-                # for _ in batch[0]:  # for each utterance
-                #     emo_a, emo_b = random.sample(emotion_list, 2)
-                #     alpha = random.uniform(0.0, 1.0)
+                # emotion blending vector 생성
+                style_vectors = []
+                blended_labels = []
+                for _ in batch[0]:  # for each utterance
+                    emo_a, emo_b = random.sample(emotion_list, 2)
+                    alpha = random.uniform(0.0, 1.0)
 
-                #     vec_a = np.load(f"emotion_style_vectors_mode/{emo_a}_style.npy")
-                #     vec_b = np.load(f"emotion_style_vectors_mode/{emo_b}_style.npy")
-                #     blended_vec = alpha * vec_a + (1 - alpha) * vec_b
-                #     blended_vec = torch.from_numpy(blended_vec).float().to(device)
-                #     style_vectors.append(blended_vec)
+                    vec_a = np.load(f"emotion_style_vectors_mode/{emo_a}_style.npy")
+                    vec_b = np.load(f"emotion_style_vectors_mode/{emo_b}_style.npy")
+                    blended_vec = alpha * vec_a + (1 - alpha) * vec_b
+                    blended_vec = torch.from_numpy(blended_vec).float().to(device)
+                    style_vectors.append(blended_vec)
 
-                #     # soft label 생성
-                #     label_vec = torch.zeros(len(emotion_list)).to(device)
-                #     idx_a = emotion_map[emo_a]
-                #     idx_b = emotion_map[emo_b]
-                #     if idx_a == idx_b:
-                #         label_vec[idx_a] = 1.0
-                #     else:
-                #         label_vec[idx_a] = alpha
-                #         label_vec[idx_b] = 1 - alpha
+                    # soft label 생성
+                    label_vec = torch.zeros(len(emotion_list)).to(device)
+                    idx_a = emotion_map[emo_a]
+                    idx_b = emotion_map[emo_b]
+                    if idx_a == idx_b:
+                        label_vec[idx_a] = 1.0
+                    else:
+                        label_vec[idx_a] = alpha
+                        label_vec[idx_b] = 1 - alpha
 
-                #     # 안정화 및 정규화
-                #     # label_vec += 1e-8
-                #     # label_vec = label_vec / label_vec.sum()
-                #     blended_labels.append(label_vec)
+                    # 안정화 및 정규화
+                    # label_vec += 1e-8
+                    # label_vec = label_vec / label_vec.sum()
+                    blended_labels.append(label_vec)
 
-                # # 텐서화
-                # style_vector = torch.stack(style_vectors, dim=0)
-                # blended_label = torch.stack(blended_labels, dim=0)
+                # 텐서화
+                style_vector = torch.stack(style_vectors, dim=0)
+                blended_label = torch.stack(blended_labels, dim=0)
 
                 # print("blended_label", blended_label)
 
@@ -175,7 +175,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                 with amp.autocast(args.use_amp):
                     # Forward
-                    output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag) # To do Step
+                    output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag, style_vector=style_vector, blended_label=blended_label) # To do Step
                     init_flag = False
 
                     # Cal Loss
@@ -186,9 +186,11 @@ def train(rank, args, configs, batch_size, num_gpus):
                 # Backward
                 scaler.scale(total_loss).backward()
 
-                # for i, vq_layer in enumerate(model.style_extractor.vq_layers):
-                #     with torch.no_grad():
-                #         vq_layer.embedding.weight[:7] = frozen_codebooks[i]
+                if step <= 450000:
+
+                    for i, vq_layer in enumerate(model.style_extractor.vq_layers):
+                        with torch.no_grad():
+                            vq_layer.embedding.weight[:7] = frozen_codebooks[i]
 
                 # Clipping gradients to avoid gradient explosion
                 if step % grad_acc_step == 0:

@@ -220,7 +220,7 @@ class FastSpeech2(nn.Module):
                 ref_embs = self.gst(mels)
                 style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
             else:
-                
+
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
                 ref_embs, cls_loss = self.ref_enc(mels, emotions=emotions)
                 # if init_flag:
@@ -248,17 +248,18 @@ class FastSpeech2(nn.Module):
             
             # 감정 index → 감정 라벨 → style vector
 
-            # if style_vector is not None:
+            if style_vector is not None:
                 
-            #     style_vectors = style_vector  # shape (B, 768)
+                style_vectors = style_vector  # shape (B, 768)
 
-            #     codebook = torch.split(style_vectors, 256, dim=1)  # vq3 기준
-            #     codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+                codebook = torch.split(style_vectors, 256, dim=1)  # vq3 기준
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
 
-            #     orig_style_ref_embs = style_vectors
-            #     style_pred_embs = self.style_extract_fc(style_vectors)
-            #     style_ref_embs = style_pred_embs
-            #     style_reconstructed = True
+                orig_style_ref_embs = style_vectors
+                style_pred_embs = self.style_extract_fc(style_vectors)
+                style_ref_embs = style_pred_embs
+                style_reconstructed = True
+
             # else:
             #     style_vectors = []
             #     style_reconstructed = None
@@ -320,11 +321,26 @@ class FastSpeech2(nn.Module):
 
             # style_pred_embs = self.style_extract_fc(style_vector)  # (B, 256)
 
-            
+            # if style_vector != None:
+            #     style_pred_embs = style_vector
+            #     style_pred_embs = self.style_extract_fc(style_pred_embs)
+            # else:
             style_pred_embs = self.style_pred_fc(style_pred_embs)
 
             # print("output", output.shape)
             # print("style_pred_embs", style_pred_embs.shape)
+
+            if style_vector is not None:
+                
+                style_vectors = style_vector  # shape (B, 768)
+
+                codebook = torch.split(style_vectors, 256, dim=1)  # vq3 기준
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+
+                orig_style_ref_embs = style_vectors
+                style_pred_embs = self.style_extract_fc(style_vectors)
+                style_ref_embs = style_pred_embs
+                style_reconstructed = True
 
             output = output + style_pred_embs.unsqueeze(1)
             positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])

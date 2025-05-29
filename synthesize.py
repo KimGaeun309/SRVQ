@@ -129,7 +129,7 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
     pitch_control, energy_control, duration_control = control_values
 
     # 감정 가중합 벡터 생성
-    style_vector = get_style_vector(args.emotion_weights, device)
+    # style_vector = get_style_vector(args.emotion_weights, device)
 
     for batch in batchs:
         batch = to_device(batch, device)
@@ -141,7 +141,7 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
                 e_control=energy_control,
                 d_control=duration_control,
                 inference=True,
-                style_vector=style_vector,  # <== 여기에 style_vector 추가
+                style_vector=None,#style_vector,  # <== 여기에 style_vector 추가
             )
             synth_samples(
                 batch,
