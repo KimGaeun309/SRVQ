@@ -109,7 +109,7 @@ class FastSpeech2(nn.Module):
             e_dim=model_config["residual_vq"]["vq_hidden"],
         )
         self.style_extractor = ResidualVQ_kmeans(
-            n_e=7, #  수정함
+            n_e=64, #  수정함
             e_dim=model_config["residual_vq"]["vq_hidden"],
             num_vq=model_config["residual_vq"]["num_rvq"],
         )
@@ -145,8 +145,9 @@ class FastSpeech2(nn.Module):
 
         # Load fixed style vectors based on emotion index
         with open("preprocessed_data/emo_kr_22050/emotions.json", "r") as f:
-            emotion_idx_map = json.load(f)
-        self.reverse_emo_map = {v: k for k, v in emotion_idx_map.items()}
+            self.emotion_idx_map = json.load(f)
+        self.reverse_emo_map = {v: k for k, v in self.emotion_idx_map.items()}
+        self.emotion_list = list(self.emotion_idx_map.keys())  # ['neu', 'ang', ..., 'hap']
 
     
     def forward(
@@ -248,35 +249,42 @@ class FastSpeech2(nn.Module):
             
             # 감정 index → 감정 라벨 → style vector
 
-            # if style_vector is not None:
+            if style_vector is not None:
+
+                codebook = torch.split(style_vector, 256, dim=1)  # vq3 기준
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+
+                orig_style_ref_embs = style_vector
+                style_pred_embs = self.style_extract_fc(style_vector)
+                style_ref_embs = style_pred_embs
                 
-            #     style_vectors = style_vector  # shape (B, 768)
+            else:
+                # print("as labeled")
+                style_vectors = []
+                blended_labels = []
+                
+                for emo_idx in emotions:
+                    # print("emo_idx", emo_idx)
+                    emo_label = self.reverse_emo_map[emo_idx.item()]
+                    # print("emo_lab", emo_label)
+                    vec = np.load(f"emotion_style_vectors_mode/{emo_label}_style.npy")
+                    vec = torch.from_numpy(vec).float().to(output.device)
+                    style_vectors.append(vec)
 
-            #     codebook = torch.split(style_vectors, 256, dim=1)  # vq3 기준
-            #     codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+                    label_vec = torch.zeros(len(self.emotion_list)).to(output.device)
+                    label_vec[emo_idx.item()] = 1.0
+                    blended_labels.append(label_vec)
 
-            #     orig_style_ref_embs = style_vectors
-            #     style_pred_embs = self.style_extract_fc(style_vectors)
-            #     style_ref_embs = style_pred_embs
-            #     style_reconstructed = True
-            # else:
-            #     style_vectors = []
-            #     style_reconstructed = None
-            #     for emo_idx in emotions:
-            #         emo_label = self.reverse_emo_map[emo_idx.item()]
-            #         vec = np.load(f"emotion_style_vectors_mode/{emo_label}_style.npy")
-            #         vec = torch.from_numpy(vec).float().to(output.device)
-            #         style_vectors.append(vec)
+                style_vector = torch.stack(style_vectors, dim=0)  # [B, 768]
+                blended_label = torch.stack(blended_labels, dim=0)
 
-            #     style_vectors = torch.stack(style_vectors, dim=0)  # [B, 768]
+                codebook = torch.split(style_vector, 256, dim=1) # vq3
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
 
-            #     codebook = torch.split(style_vectors, 256, dim=1) # vq3
-            #     codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+                orig_style_ref_embs = style_vector
+                style_pred_embs = self.style_extract_fc(style_vector)  # [B, 256]
 
-            #     orig_style_ref_embs = style_vectors
-            #     style_pred_embs = self.style_extract_fc(style_vectors)  # [B, 256]
-
-            #     style_ref_embs = style_pred_embs
+                style_ref_embs = style_pred_embs
 
             output = output + style_ref_embs.unsqueeze(1)
 
@@ -287,25 +295,7 @@ class FastSpeech2(nn.Module):
             # vq_loss, min_encoding_indices = torch.tensor(0.0, device=output.device), None
 
         else:
-            # style_reconstructed = 
-            # # print("inference")
-            # # assert style_vector is not None, "style_vector must be provided during inference"
-            # if style_vector is None:
-            #     # Load style vector from npy file based on emotion label
-            #     style_vectors = []
-            #     for emo_idx in emotions:
-            #         emo_label = self.reverse_emo_map[emo_idx.item()]
-            #         vec = np.load(f"emotion_style_vectors_mode/{emo_label}_style.npy")
-            #         vec = torch.from_numpy(vec).float().to(output.device)
-            #         style_vectors.append(vec)
-
-            #     style_vector = torch.stack(style_vectors, dim=0)  # [B, 768]
-
-            # style_pred_embs = style_vector  # [B, 768]
             
-            # # style_pred_embs = style_vector.squeeze().unsqueeze(0)
-
-            # # print("style_pred_embs", style_pred_embs.shape)
         
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
             style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
@@ -320,8 +310,53 @@ class FastSpeech2(nn.Module):
 
             # style_pred_embs = self.style_extract_fc(style_vector)  # (B, 256)
 
-            
             style_pred_embs = self.style_pred_fc(style_pred_embs)
+
+            # style_reconstructed = 
+            # print("inference")
+            # assert style_vector is not None, "style_vector must be provided during inference"
+            if style_vector is not None:
+                codebook = torch.split(style_vector, 256, dim=1)  # vq3 기준
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+
+                orig_style_ref_embs = style_vector
+                style_pred_embs = self.style_extract_fc(style_vector)
+                style_ref_embs = style_pred_embs
+                
+            else:
+                # print("as labeled")
+                style_vectors = []
+                blended_labels = []
+                
+                for emo_idx in emotions:
+                    # print("emo_idx", emo_idx)
+                    emo_label = self.reverse_emo_map[emo_idx.item()]
+                    # print("emo_lab", emo_label)
+                    
+                    vec = np.load(f"emotion_style_vectors_mode/{emo_label}_style.npy")
+                    vec = torch.from_numpy(vec).float().to(output.device)
+                    style_vectors.append(vec)
+
+                    label_vec = torch.zeros(len(self.emotion_list)).to(output.device)
+                    label_vec[emo_idx.item()] = 1.0
+                    blended_labels.append(label_vec)
+
+                style_vector = torch.stack(style_vectors, dim=0)  # [B, 768]
+                blended_label = torch.stack(blended_labels, dim=0)
+
+                codebook = torch.split(style_vector, 256, dim=1) # vq3
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+
+                orig_style_ref_embs = style_vector
+                style_pred_embs = self.style_extract_fc(style_vector)  # [B, 256]
+
+                style_ref_embs = style_pred_embs
+
+            
+            
+            # style_pred_embs = style_vector.squeeze().unsqueeze(0)
+
+            # print("style_pred_embs", style_pred_embs.shape)
 
             # print("output", output.shape)
             # print("style_pred_embs", style_pred_embs.shape)

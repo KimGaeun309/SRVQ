@@ -19,6 +19,10 @@ from text.korean import tokenize, normalize_nonchar
 import time
 import json
 
+from g2pk import G2p
+from jamo import h2j
+from text import _clean_text
+
 def get_style_vector(emotion_weights_str, device):
     """
     emotion_weights_str 예시: "neu:0.7,ang:0.3"
@@ -29,7 +33,7 @@ def get_style_vector(emotion_weights_str, device):
     }
     style_vectors = []
     for emo, weight in emotion_weights.items():
-        vec = np.load(f"emotion_style_vectors/{emo}_style.npy")  # (768,)
+        vec = np.load(f"emotion_style_vectors_mode/{emo}_style.npy")  # (768,)
         style_vectors.append(torch.from_numpy(vec).float() * weight)
     style_vector = sum(style_vectors).unsqueeze(0).to(device)  # (1, 768)
     return style_vector
@@ -129,7 +133,9 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
     pitch_control, energy_control, duration_control = control_values
 
     # 감정 가중합 벡터 생성
-    # style_vector = get_style_vector(args.emotion_weights, device)
+    style_vector = None
+    if args.mode == "single":
+        style_vector = get_style_vector(args.emotion_weights, device)
 
     for batch in batchs:
         batch = to_device(batch, device)
@@ -141,7 +147,7 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
                 e_control=energy_control,
                 d_control=duration_control,
                 inference=True,
-                style_vector=None, #style_vector,  # <== 여기에 style_vector 추가
+                style_vector=style_vector,  # <== 여기에 style_vector 추가
             )
             synth_samples(
                 batch,
@@ -274,19 +280,8 @@ if __name__ == "__main__":
         emotion = args.emotion
         speaker = args.speaker
 
-        # === 감정 비율에 따라 style_vector 불러오기 ===
-        ratios = {'neu': 0.7, 'ang': 0.3}  # 예시: 중립 0.7 + 화남 0.3
-        style_vectors = []
-        for emo, weight in ratios.items():
-            vec = np.load(f"emotion_style_vectors/{emo}_style.npy")
-            style_vectors.append(torch.from_numpy(vec).float() * weight)
-        style_vector = sum(style_vectors).unsqueeze(0).to(device)  # (1, 768)
-        # ============================================
-
         cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
-        from g2pk import G2p
-        from jamo import h2j
-        from text import _clean_text
+        
 
         g2p = G2p()
         filters = '([.,!?])"'

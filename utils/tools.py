@@ -150,10 +150,10 @@ def expand(values, durations):
     return np.array(out)
 
 
-def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
+def synth_one_sample(batch, model, vocoder, model_config, preprocess_config, style_vector=None, blended_label=None):
 
     with torch.no_grad():
-        test_output = model(*(batch[2:]), inference=True) # Inference
+        test_output = model(*(batch[2:]), inference=True, style_vector=style_vector, blended_label=blended_label) # Inference
 
     (
         ids,

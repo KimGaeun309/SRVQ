@@ -15,7 +15,7 @@ def get_model(args, configs, device, train=False):
     print("device", device)
 
     model = FastSpeech2(preprocess_config, model_config).to(device)
-    # frozen_codebooks = []  # ✅ 여기서 초기화
+    frozen_codebooks = []  # ✅ 여기서 초기화
 
     if args.restore_step:
         ckpt_path = os.path.join(
@@ -23,10 +23,41 @@ def get_model(args, configs, device, train=False):
             "{}.pth.tar".format(args.restore_step),
         )
         ckpt = torch.load(ckpt_path, map_location=torch.device(device), weights_only=False)
+        
+        # for i in range(3):
+        #     old_weight = ckpt["model"][f"style_extractor.vq_layers.{i}.embedding.weight"]
+        #     model.style_extractor.vq_layers[i].embedding.weight.data[:7] = old_weight
 
-        model.load_state_dict(ckpt["model"])
+        #     # freeze용 codebook 저장
+        #     frozen_codebooks.append(model.style_extractor.vq_layers[i].embedding.weight[:7])
+
+        for i, vq in enumerate(model.style_extractor.vq_layers):
+            key = f"style_extractor.vq_layers.{i}.embedding.weight"
+            if key in ckpt["model"]:
+                old_weight = ckpt["model"][key]  # shape [7, e_dim]
+                if old_weight.shape[0] > 7:
+                    frozen_codebooks.append(old_weight[:7].clone().to(device))
+                else:
+                    print("else")
+                    n_e = 64
+                    e_dim = old_weight.shape[1]
+
+                    uniform_range = 1.0 / n_e
+                    new_weight = torch.empty(n_e, e_dim).uniform_(-uniform_range, uniform_range).to(old_weight.device)
+                    new_weight[:7] = old_weight  # 상위 7개는 유지
+                    ckpt["model"][key] = new_weight.to(device)
+
+                    frozen_codebooks.append(old_weight.clone().to(device))  # ✅ 7개 고정값 저장
+
+    model.load_state_dict(ckpt["model"])
 
     if train:
+        for param in model.ref_enc.parameters():
+            param.requires_grad = False
+        for param in model.style_extractor.parameters():
+            param.requires_grad = False
+        for param in model.style_extract_fc.parameters():
+            param.requires_grad = False
         scheduled_optim = ScheduledOptim(
             model, train_config, model_config, args.restore_step
         )

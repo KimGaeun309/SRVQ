@@ -440,16 +440,20 @@ class VectorQuantizer_kmeans(nn.Module):
         usage_threshold보다 작은 dead codes를 찾아,
         usage가 가장 높은 코드들(Top-K)의 임베딩으로 교체한다.
         """
+
+        
+
         # 1) dead_codes 탐색\
         device = self.usage.device  # self.usage는 GPU에 있음
         dead_codes = torch.nonzero(
             (self.usage < self.usage_threshold) & (torch.arange(self.n_e, device=device) >= 7)
         ).squeeze(1)
-        # dead_codes = torch.nonzero((self.usage < self.usage_threshold) & (torch.arange(self.n_e) >= 7)).squeeze(1)
-        
-        # 2) 사용 빈도가 높은 순서대로 정렬 후, dead_codes 개수만큼 가져오기
-        # argsort()로 내림차순 정렬하면 usage가 큰 인덱스부터 순서대로 정렬되므로
-        # 앞에서 dead_codes 개수(len(dead_codes))만큼 선택
+            # dead_codes = torch.nonzero((self.usage < self.usage_threshold) & (torch.arange(self.n_e) >= 7)).squeeze(1)
+            
+            # 2) 사용 빈도가 높은 순서대로 정렬 후, dead_codes 개수만큼 가져오기
+            # argsort()로 내림차순 정렬하면 usage가 큰 인덱스부터 순서대로 정렬되므로
+            # 앞에서 dead_codes 개수(len(dead_codes))만큼 선택
+        # if len(dead_codes) < (7/2):
         top_codes = torch.argsort(self.usage, descending=True)[:len(dead_codes)]
         
         # 3) 임베딩 교체
@@ -458,6 +462,13 @@ class VectorQuantizer_kmeans(nn.Module):
 
         print(f"[reset_dead_codes_greedy] Replaced {len(dead_codes)} dead codes "
             f"with most frequently used codes.")
+        # else:
+        #     # 모든 걸 다 가장 빈도 높은걸로 초기화화
+
+        #     most_used_index = torch.argmax(self.usage)  # 가장 사용 많이 된 코드 하나 선택
+        #     with torch.no_grad():
+        #         self.embedding.weight[dead_codes] = self.embedding.weight[most_used_index]
+        #     print(f"[reset_dead_codes_greedy] Replaced {len(dead_codes)} dead codes ")
 
     
 

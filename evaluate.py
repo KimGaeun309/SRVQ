@@ -8,6 +8,7 @@ from dataset import Dataset
 import numpy as np
 from utils.tools import pad_1D, pad_2D
 import json
+import random
 
 def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=None):
     preprocess_config, model_config, train_config = configs
@@ -48,27 +49,48 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
             # pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
             # energy_mel = pad_2D(energy_mel)
             # energy_mel = torch.from_numpy(energy_mel).to('cuda')
-            
+
+            # 감정 mapping 정보 불러오기
             with open("preprocessed_data/emo_kr_22050/emotions.json", "r") as f:
                 emotion_map = json.load(f)
             reverse_emo_map = {v: k for k, v in emotion_map.items()}
-            emotion_list = list(emotion_map.keys())
+            emotion_list = list(emotion_map.keys())  # ['neu', 'ang', ..., 'hap']
 
-            style_vectors, blended_labels = [], []
+            # # emotion blending vector 생성
+            # style_vectors = []
+            # blended_labels = []
+            
+            # for _ in batch[0]:  # for each utterance
+            #     emo_a, emo_b = random.sample(emotion_list, 2)
+            #     alpha = random.uniform(0.5, 1.0)
 
-            for emo_idx in batch[3]:  # emotions
-                emo_label = reverse_emo_map[emo_idx.item()]
-                
-                vec = np.load(f"emotion_style_vectors_mode/{emo_label}_style.npy")
-                vec = torch.from_numpy(vec).float().to(device)
-                style_vectors.append(vec)
+            #     vec_a = np.load(f"emotion_style_vectors_mode/{emo_a}_style.npy")
+            #     vec_b = np.load(f"emotion_style_vectors_mode/{emo_b}_style.npy")
+            #     blended_vec = alpha * vec_a + (1 - alpha) * vec_b
+            #     blended_vec = torch.from_numpy(blended_vec).float().to(device)
+            #     style_vectors.append(blended_vec)
 
-                label_vec = torch.zeros(len(emotion_list)).to(device)
-                label_vec[emo_idx.item()] = 1.0
-                blended_labels.append(label_vec)
+            #     # soft label 생성
+            #     label_vec = torch.zeros(len(emotion_list)).to(device)
+            #     idx_a = emotion_map[emo_a]
+            #     idx_b = emotion_map[emo_b]
+            #     if idx_a == idx_b:
+            #         label_vec[idx_a] = 1.0
+            #     else:
+            #         label_vec[idx_a] = alpha
+            #         label_vec[idx_b] = 1 - alpha
 
-            style_vector = torch.stack(style_vectors, dim=0)
-            blended_label = torch.stack(blended_labels, dim=0)
+            #     # 안정화 및 정규화
+            #     # label_vec += 1e-8
+            #     # label_vec = label_vec / label_vec.sum()
+            #     blended_labels.append(label_vec)
+
+
+
+            # style_vector = torch.stack(style_vectors, dim=0)
+            # blended_label = torch.stack(blended_labels, dim=0)
+
+            style_vector, blended_label = None, None
 
 
 

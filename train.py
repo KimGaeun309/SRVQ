@@ -23,6 +23,8 @@ from evaluate import evaluate
 from model import FastSpeech2Loss
 from utils.model import get_model, get_vocoder, get_param_num
 from utils.tools import get_configs_of, to_device, log, synth_one_sample
+from check_code_index import run_check_code_index
+
 import json 
 
 torch.backends.cudnn.benchmark = True
@@ -127,7 +129,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 # blended_labels = []
                 # for _ in batch[0]:  # for each utterance
                 #     emo_a, emo_b = random.sample(emotion_list, 2)
-                #     alpha = random.uniform(0.0, 1.0)
+                #     alpha = random.uniform(0.5, 1.0)
 
                 #     vec_a = np.load(f"emotion_style_vectors_mode/{emo_a}_style.npy")
                 #     vec_b = np.load(f"emotion_style_vectors_mode/{emo_b}_style.npy")
@@ -156,6 +158,9 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                 # print("blended_label", blended_label)
 
+                # if random.random() < 0.7: # pure!
+                style_vector, blended_label = None, None
+
                 
                 basenames = batch[0]
                 
@@ -175,16 +180,17 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                 with amp.autocast(args.use_amp):
                     # Forward
-                    output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag) # To do Step
+                    output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag, style_vector=style_vector, blended_label=blended_label) # To do Step
                     init_flag = False
 
                     # Cal Loss
-                    losses = Loss(batch, output, step=step) # To do Step
+                    losses = Loss(batch, output, step=step, style_vector=style_vector) # To do Step
                     total_loss = losses[0]
                     total_loss = total_loss / grad_acc_step
 
                 # Backward
                 scaler.scale(total_loss).backward()
+                
 
                 # for i, vq_layer in enumerate(model.style_extractor.vq_layers):
                 #     with torch.no_grad():
@@ -287,6 +293,11 @@ def train(rank, args, configs, batch_size, num_gpus):
                             ),
                         )
 
+                        # run_check_code_index(
+                        #     restore_step=step,
+                        #     dataset=args.dataset,
+                        #     source_path="preprocessed_data/emo_kr_22050/train.txt"  # or dynamic path
+                        # )
                         # os.system(f"python3 check_code_index.py --dataset icassp_2024 --restore_step {step} --dataset {args.dataset}")
 
 
@@ -349,20 +360,23 @@ def train(rank, args, configs, batch_size, num_gpus):
         
         torch.cuda.empty_cache()
 
-        if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[0].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
+        # for i in range(1):
+        #     model.style_extractor.vq_layers[i].greedy_restart()
+
+        # if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
+        #     model.style_extractor.vq_layers[0].greedy_restart()
+        # else:
+        #     model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
         
-        if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[1].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
+        # if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
+        #     model.style_extractor.vq_layers[1].greedy_restart()
+        # else:
+        #     model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
         
-        if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[2].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
+        # if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
+        #     model.style_extractor.vq_layers[2].greedy_restart()
+        # else:
+        #     model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
         torch.cuda.empty_cache()
 
