@@ -19,6 +19,26 @@ from text.korean import tokenize, normalize_nonchar
 import time
 import json
 
+from g2pk import G2p
+from jamo import h2j
+from text import _clean_text
+
+def get_style_vector(emotion_weights_str, device):
+    """
+    emotion_weights_str 예시: "neu:0.7,ang:0.3"
+    """
+    emotion_weights = {
+        k.strip(): float(v)
+        for k, v in (item.split(":") for item in emotion_weights_str.split(","))
+    }
+    style_vectors = []
+    for emo, weight in emotion_weights.items():
+        vec = np.load(f"emotion_style_vectors_mode/{emo}_style.npy")  # (768,)
+        style_vectors.append(torch.from_numpy(vec).float() * weight)
+    style_vector = sum(style_vectors).unsqueeze(0).to(device)  # (1, 768)
+    return style_vector
+
+
 def read_lexicon(lex_path):
     lexicon = {}
     with open(lex_path) as f:
@@ -108,11 +128,14 @@ def preprocess_mandarin(text, preprocess_config):
     # )
 
     return phones
-
-
 def synthesize(device, model, args, configs, vocoder, batchs, control_values):
     preprocess_config, model_config, train_config = configs
     pitch_control, energy_control, duration_control = control_values
+
+    # 감정 가중합 벡터 생성
+    style_vector = None
+    if args.mode == "single":
+        style_vector = get_style_vector(args.emotion_weights, device)
 
     for batch in batchs:
         batch = to_device(batch, device)
@@ -124,6 +147,7 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
                 e_control=energy_control,
                 d_control=duration_control,
                 inference=True,
+                style_vector=style_vector,  # <== 여기에 style_vector 추가
             )
             synth_samples(
                 batch,
@@ -134,6 +158,7 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
                 os.path.join(train_config["path"]["result_path"], str(args.restore_step)),
                 args,
             )
+
 
 
 if __name__ == "__main__":
@@ -195,6 +220,15 @@ if __name__ == "__main__":
         default=1.0,
         help="control the speed of the whole utterance, larger value for slower speaking rate",
     )
+
+    parser.add_argument(
+    "--emotion_weights",
+    type=str,
+    default="neu:1.0",
+    help="comma-separated emotion weights, e.g., 'neu:0.7,ang:0.3'",
+)
+
+
     args = parser.parse_args()
 
     # Check source texts
@@ -234,7 +268,6 @@ if __name__ == "__main__":
             batch_size=8,
             collate_fn=dataset.collate_fn,
         )
-
     if args.mode == "single":
         with open(
             os.path.join(
@@ -248,9 +281,7 @@ if __name__ == "__main__":
         speaker = args.speaker
 
         cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
-        from g2pk import G2p
-        from jamo import h2j
-        from text import _clean_text
+        
 
         g2p = G2p()
         filters = '([.,!?])"'
@@ -260,7 +291,6 @@ if __name__ == "__main__":
         raw_text = h2j(g2p(raw_text))
 
         phone = preprocess_korean(raw_text, cleaners)
-
         print("phone", phone)
 
         dataset = TextDatasetSingle(preprocess_config, raw_text, phone, speaker, emotion)
@@ -270,6 +300,7 @@ if __name__ == "__main__":
             batch_size=1,
             collate_fn=dataset.collate_fn,
         )
+
 
         # ids = raw_texts = [args.text[:100]]
         # speakers = np.array([args.speaker_id])

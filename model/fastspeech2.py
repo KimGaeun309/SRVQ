@@ -163,6 +163,7 @@ class FastSpeech2(nn.Module):
         pitch_mel=None,
         energy_mel=None,
         init_flag=False,
+        style_vector=None,
     ):
         
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
@@ -244,6 +245,8 @@ class FastSpeech2(nn.Module):
             prosody_embedding = style_ref_embs.unsqueeze(1) + positions
 
         else:
+            
+
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
             style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
             if self.model_config["residual_vq"]["num_rvq"] == 4:
@@ -257,6 +260,15 @@ class FastSpeech2(nn.Module):
 
             
             style_pred_embs = self.style_pred_fc(style_pred_embs)
+
+            if style_vector is not None:
+                print("style vector!")
+                codebook = torch.split(style_vector, 256, dim=1)  # vq3 기준
+                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
+
+                orig_style_ref_embs = style_vector
+                style_pred_embs = self.style_extract_fc(style_vector)
+                style_ref_embs = style_pred_embs
 
             output = output + style_pred_embs.unsqueeze(1)
             positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])
