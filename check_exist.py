@@ -19,7 +19,7 @@ for data in datas:
                 new_lines.append(line)
 
 
-
+rk
     with open(os.path.join(preprocessed_path, data), 'w', encoding='utf-8') as f2:
         for line in new_lines:
             f2.write(line)
