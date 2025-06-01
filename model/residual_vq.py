@@ -584,7 +584,9 @@ class ResidualVQ(torch.nn.Module):
         # z_q_out = torch.cat([z_q_out_1, z_q_out_2], dim=1)
         # vq_loss = vq_loss_1 + vq_loss_2
 
-        return z_q_out, vq_loss, min_encoding_indices_1, codebooks
+        min_encoding_indices = [min_encoding_indices_1, min_encoding_indices_2, min_encoding_indices_3]
+
+        return z_q_out, vq_loss, min_encoding_indices, codebooks
 
 class ResidualVQ2(torch.nn.Module):
     def __init__(
