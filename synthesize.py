@@ -198,10 +198,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Check source texts
-    if args.mode == "batch":
-        assert args.source is not None and args.text is None
-    if args.mode == "single":
-        assert args.source is None and args.text is not None 
+    # if args.mode == "batch":
+    #     assert args.source is not None and args.source is None
+    # if args.mode == "single":
+    #     assert args.source is None and args.text is not None 
 
 
     # Read Config
