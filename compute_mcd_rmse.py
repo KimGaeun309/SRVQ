@@ -335,10 +335,19 @@ if __name__ == "__main__":
     ORIGINAL_PATH = os.path.join(train_config["path"]["result_path"], "targ_wavs")
     SYNTHESIZED_PATH = os.path.join(train_config["path"]["result_path"], str(args.restore_step))
 
-    dir_org_speech_wav = glob.glob(ORIGINAL_PATH+'/*.wav')
-    dir_org_speech_mcep = ORIGINAL_PATH+'/mceps_trg'
+    
     dir_converted_speech_wav = glob.glob(SYNTHESIZED_PATH+'/*.wav')
     dir_converted_speech_mcep =SYNTHESIZED_PATH+'/mceps_conv'
+
+    for wav in dir_converted_speech_wav:
+        basename = os.path.basename(wav)
+        speaker = basename[:3]
+        orig_path = f"/root/mydir/ICASSP2024_FS2-develop/Datasets/emo_kr_22050/wavs/{speaker}/{basename}"
+        os.system(f"cp {orig_path} {ORIGINAL_PATH}")
+
+    dir_org_speech_wav = glob.glob(ORIGINAL_PATH+'/*.wav')
+    dir_org_speech_mcep = ORIGINAL_PATH+'/mceps_trg'
+        
 
     for wav in dir_org_speech_wav:
         MCEP(wav, dir_org_speech_mcep, fft_size=fft_size, mcep_size=mcep_size)

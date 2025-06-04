@@ -638,7 +638,7 @@ class ResidualVQ_kmeans(torch.nn.Module):
 
 
 
-        return final_quantized, total_vq_loss, indices_list, codebooks #, perplexities
+        return final_quantized, total_vq_loss, indices_list, codebooks # , perplexities
 
 class ResidualVQ(torch.nn.Module):
     def __init__(
@@ -938,7 +938,7 @@ class ResidualVQ2_kmeans(torch.nn.Module):
         # 모든 단계의 quantized 코드를 concatenate
         final_quantized = torch.cat(quantized_codes, dim=1)
 
-        return final_quantized, total_vq_loss, indices_list, perplexities
+        return final_quantized, total_vq_loss, indices_list #, perplexities
 
 class ReferenceEncoderSRVQ3(torch.nn.Module):
     def __init__(self, e_dim
