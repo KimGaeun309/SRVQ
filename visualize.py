@@ -128,7 +128,7 @@ if __name__ == "__main__":
     for idx, (tsne_data, title) in enumerate(zip([tsne_1, tsne_2, tsne_3, tsne_4], ["VQ1", "VQ2", "VQ3", "RVQ"])):
         fig, ax = plt.subplots(figsize=(5, 5))
         scatter_tsne(ax, tsne_data, emotions, title)
-        ax.legend(loc='best', fontsize=8)
+        # ax.legend(loc='best', fontsize=8)
         plt.savefig(f'tsne_plot_{idx+1}.png', dpi=300)
         plt.close()
 
