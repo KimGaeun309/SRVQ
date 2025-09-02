@@ -12,39 +12,7 @@ from tqdm import tqdm
 
 import audio as Audio
 import natsort
-import re
 
-from g2pk import G2p
-from jamo import h2j
-from text import _clean_text
-
-
-from text import text_to_sequence
-from text.korean import tokenize, normalize_nonchar
-
-def preprocess_korean(text, cleaners):
-    # lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
-
-    phones = []
-    words = filter(None, re.split(r"([,;.\-\?\!\s+])", text))
-    for w in words:
-        # if w in lexicon:
-        #     phones += lexicon[w]
-        # else:
-        phones += list(filter(lambda p: p != " ", tokenize(w, norm=False)))
-    phones = "{" + "}{".join(phones) + "}"
-    phones = normalize_nonchar(phones, inference=True)
-    phones = phones.replace("}{", " ")
-
-    # print("Raw Text Sequence: {}".format(text))
-    # print("Phoneme Sequence: {}".format(phones))
-    sequence = np.array(
-        text_to_sequence(
-            phones, cleaners
-        )
-    )
-
-    return phones
 
 class Preprocessor:
     def __init__(self, preprocess_config, model_config, train_config):
@@ -93,8 +61,7 @@ class Preprocessor:
         os.makedirs((os.path.join(self.out_dir, "duration")), exist_ok=True)
 
         print("Processing Data ...")
-        out_6 = list()
-        out_all = list()
+        out = list()
         n_frames = 0
         pitch_scaler = StandardScaler()
         energy_scaler = StandardScaler()
@@ -102,7 +69,7 @@ class Preprocessor:
         # Compute pitch, energy, duration, and mel-spectrogram
         # speakers = {}
         new_data_path = "/media/gaeun/fee580d1-6954-462b-bdaf-3b8ccc4254311/data/015.Emotion_and_Style_TTS"
-        metadata_path = os.path.join(new_data_path, "metadata3.csv")
+        metadata_path = os.path.join(new_data_path, "metadata2.csv")
         metadata_lines = []
 
         with open(metadata_path, "r", encoding='utf-8') as metadata_file:
@@ -120,54 +87,26 @@ class Preprocessor:
 
             # if not os.path.exists(wav_path): continue
 
-            # tg_path = os.path.join( 주석
-            #     self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)
-            # )
-            # if os.path.exists(tg_path):
-            #     ret = self.process_utterance(speaker, basename, emotion)
-            #     if ret is None:
-            #         print("ret is None")
-            #         continue
-            #     else:
-            #         info, pitch, energy, n = ret
-            #     print("info", info)
-            #     out_all.append(info)
-            #     if "ASH" in speaker or "CST" in speaker or "BJS" in speaker or "JCH" in speaker or "GJY" in speaker or "CHY" in speaker or "OES" in speaker or "LSY" in speaker:
-            #         out_6.append(info)
-            # else:
-            #     print("TextGrid not exists:", tg_path)
-            #     continue
-
-            # if not ("CHY" in speaker or "OES" in speaker or "JCH" in speaker or "LSY" in speaker or "CST" in speaker or "ASH" in speaker or "GJY" in speaker or "BJS" in speaker): # 추가
-            #     continue
-
-            ret = self.process_utterance(speaker, basename, emotion)
-
-    
-            if ret is None:
-                print("ret is None")
-                continue
+            tg_path = os.path.join(
+                self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)
+            )
+            if os.path.exists(tg_path):
+                ret = self.process_utterance(speaker, basename, emotion)
+                if ret is None:
+                    print("ret is None")
+                    continue
+                else:
+                    info, pitch, energy, n = ret
+                out.append(info)
             else:
-                
-                info, pitch, energy, n = ret
-                
-            #     info = ret[0]
-            # print("info", info)
+                print("TextGrid not exists:", tg_path)
 
-            
-            # out_all.append(info)
-
-            # if "ASH" in speaker or "CST" in speaker or "BJS" in speaker or "JCH" in speaker or "GJY" in speaker or "CHY" in speaker or "OES" in speaker or "LSY" in speaker:
-            #     out_6.append(info)
-
-            
             if len(pitch) > 0:
                 pitch_scaler.partial_fit(pitch.reshape((-1, 1)))
             if len(energy) > 0:
                 energy_scaler.partial_fit(energy.reshape((-1, 1)))
 
             n_frames += n
-            
 
 
         # Compute pitch, energy, duration, and mel-spectrogram
@@ -197,7 +136,6 @@ class Preprocessor:
 
         #         n_frames += n
 
-        
         print("Computing statistic quantities ...")
         # Perform normalization if necessary
         if self.pitch_normalization:
@@ -242,53 +180,39 @@ class Preprocessor:
             }
             f.write(json.dumps(stats))
 
-        
-
         print(
             "Total time: {} hours".format(
                 n_frames * self.hop_length / self.sampling_rate / 3600
             )
         )
-        
 
         random.seed(777)
-        random.shuffle(out_6)
-        # out_6 = [r for r in out_6 if r is not None]
+        random.shuffle(out)
+        out = [r for r in out if r is not None]
 
-        # train_set = natsort.natsorted(out_6[self.val_size:])
-        # temp_set = out_6[:self.val_size] # 
-        # val_set = temp_set[self.test_size:]
-        # test_set = temp_set[:self.test_size]
+        train_set = natsort.natsorted(out[self.val_size:])
+        temp_set = out[:self.val_size] # 
+        val_set = temp_set[self.test_size:]
+        test_set = temp_set[:self.test_size]
 
-        # # Write metadata
-        # with open(os.path.join(self.out_dir, "train_6.txt"), "w", encoding="utf-8") as f:
-        #     for m in train_set:
-        #         f.write(m + "\n")
-        # with open(os.path.join(self.out_dir, "val_6.txt"), "w", encoding="utf-8") as f:
-        #     val_set = natsort.natsorted(val_set)
-        #     for m in val_set:
-        #         f.write(m + "\n")
-        # with open(os.path.join(self.out_dir, "test_6.txt"), "w", encoding="utf-8") as f:
-        #     test_set = natsort.natsorted(test_set)
-        #     for m in test_set:
-        #         f.write(m + "\n")
+        # Write metadata
+        with open(os.path.join(self.out_dir, "train.txt"), "w", encoding="utf-8") as f:
+            for m in train_set:
+                f.write(m + "\n")
+        with open(os.path.join(self.out_dir, "val.txt"), "w", encoding="utf-8") as f:
+            val_set = natsort.natsorted(val_set)
+            for m in val_set:
+                f.write(m + "\n")
+        with open(os.path.join(self.out_dir, "test.txt"), "w", encoding="utf-8") as f:
+            test_set = natsort.natsorted(test_set)
+            for m in test_set:
+                f.write(m + "\n")
 
-        # with open(os.path.join(self.out_dir, "train_all.txt"), "w", encoding="utf-8") as f:
-        #     train_set = natsort.natsorted(out_all)
-        #     for m in train_set:
-        #         f.write(m + "\n")
-
-        # return out_6
-        return None
-        
+        return out
 
     def process_utterance(self, speaker, basename, emotion):
         wav_path = os.path.join(self.in_dir, speaker, "{}.wav".format(basename))
         text_path = os.path.join(self.in_dir, speaker, "{}.lab".format(basename))
-        dur_filename = "{}-duration-{}.npy".format(speaker, basename)
-        dur_path = os.path.join(self.out_dir, "duration", dur_filename)
-        
-        
         tg_path = os.path.join(
             self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)
         )
@@ -296,71 +220,39 @@ class Preprocessor:
         # Emotions
         # emotion = wav_path.split('/')[-1][4:7]
 
-        # Get alignments 주석
-        # textgrid = tgt.io.read_textgrid(tg_path)
-        # phone, tg_duration, start, end = self.get_alignment(
-        #     textgrid.get_tier_by_name("phones")
-        # )
-        # text = "{" + " ".join(phone) + "}"
-        # if start >= end:
-        #     return None
+        # Get alignments
+        textgrid = tgt.io.read_textgrid(tg_path)
+        phone, duration, start, end = self.get_alignment(
+            textgrid.get_tier_by_name("phones")
+        )
+        text = "{" + " ".join(phone) + "}"
+        if start >= end:
+            return None
         
-        print("========================")
+        # print("========================")
         # print("textgrid:", tg_path)
         # print("text:", text)
         # print("phone:", list(phone))
-        # print("tg_duration:", tg_duration, len(tg_duration), sum(tg_duration))
+        # print("duration:", duration)
         # print("start, end:", start, end)
-
-        if not os.path.exists(wav_path):
-            print("wav", wav_path, "not exists")
-            return None
         
-        if not os.path.exists(text_path):
-            print("txt", text_path, "not exists")
-            return None
-        
-        if not os.path.exists(dur_path):
-            print("dur", dur_path, "not exists")
-            return None
 
         # Read and trim wav files
         wav, _ = librosa.load(wav_path)
-        # wav = wav[
-        #     int(self.sampling_rate * start) :
-        # ].astype(np.float32)
-        wav = wav.astype(np.float32)
-
-
-        duration = list(np.load(dur_path).astype(int))
-
-        print("duration:", duration, len(duration), sum(duration))
+        wav = wav[
+            int(self.sampling_rate * start) :
+        ].astype(np.float32)
 
 
 
-        # Read raw text 
-        # with open(text_path, "r") as f: 주석
-        #     raw_text = f.readline().strip("\n")
-
-        # g2p = G2p()
-        # filters = '([.,!?])"'
-        # cleaners = ["korean_cleaners"]
-        # raw_text = re.sub(re.compile(filters), '', raw_text)
-        # raw_text = _clean_text(raw_text, cleaners)
-        # raw_text = h2j(g2p(raw_text))
-
-        # phone = np.array([preprocess_korean(raw_text, cleaners)])
-
-        # print("text", raw_text)
-        # print("phone", phone)
-
-
+        # Read raw text
+        with open(text_path, "r") as f:
+            raw_text = f.readline().strip("\n")
 
 
         # print("raw_text:", raw_text)
 
         # Compute fundamental frequency
-        
         pitch, t = pw.dio(
             wav.astype(np.float64),
             self.sampling_rate,
@@ -375,18 +267,15 @@ class Preprocessor:
         # Compute mel-scale spectrogram and energy
         mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
 
-        # print("mel shape", mel_spectrogram.shape)
-
         # mel_spectrogram = mel_spectrogram[:, : sum(duration)]
-        # energy = energy[: mel_spectrogram.shape[1]+1]
-        # pitch = pitch[: mel_spectrogram.shape[1]+1]
+        energy = energy[: mel_spectrogram.shape[1]+1]
+        pitch = pitch[: mel_spectrogram.shape[1]+1]
         # energy = energy[: sum(duration)]
         # pitch = pitch[: sum(duration)]
 
+        
 
-        if self.pitch_phoneme_averaging: 
-
-            # print("original pitch", pitch)
+        if self.pitch_phoneme_averaging:
             # perform linear interpolation
             nonzero_ids = np.where(pitch != 0)[0]
             interp_fn = interp1d(
@@ -397,8 +286,6 @@ class Preprocessor:
             )
             pitch = interp_fn(np.arange(0, len(pitch)))
 
-            
-
             # Phoneme-level average
             pos = 0
             for i, d in enumerate(duration):
@@ -408,8 +295,6 @@ class Preprocessor:
                     pitch[i] = 0
                 pos += d
             pitch = pitch[: len(duration)]
-
-            print("revised pitch", pitch, len(pitch))
 
         if self.energy_phoneme_averaging:
             # Phoneme-level average
@@ -422,35 +307,26 @@ class Preprocessor:
                 pos += d
             energy = energy[: len(duration)]
 
-        # # Save files 주석
-        # dur_filename = "{}-duration-{}.npy".format(speaker, basename)
-        # np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
+        # Save files
+        dur_filename = "{}-duration-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
 
         pitch_filename = "{}-pitch-{}.npy".format(speaker, basename)
-
-        # np.load(os.path.join(self.out_dir, "pitch", pitch_filename))
-
-        # print("pitch", pitch)
-
-
         np.save(os.path.join(self.out_dir, "pitch", pitch_filename), pitch)
 
         energy_filename = "{}-energy-{}.npy".format(speaker, basename)
         np.save(os.path.join(self.out_dir, "energy", energy_filename), energy)
 
-        # mel_filename = "{}-mel-{}.npy".format(speaker, basename)
-        # np.save(
-        #     os.path.join(self.out_dir, "mel", mel_filename),
-        #     mel_spectrogram.T,
-        # )
-        
-        return ( #주석
-            # "|".join([basename, speaker, emotion, phone[0], raw_text]), 
-            None, 
-            pitch, energy,
-            
-            # self.remove_outlier(pitch),
-            # self.remove_outlier(energy),
+        mel_filename = "{}-mel-{}.npy".format(speaker, basename)
+        np.save(
+            os.path.join(self.out_dir, "mel", mel_filename),
+            mel_spectrogram.T,
+        )
+
+        return (
+            "|".join([basename, speaker, emotion, text, raw_text]),
+            self.remove_outlier(pitch),
+            self.remove_outlier(energy),
             mel_spectrogram.shape[1],
         )
 

@@ -235,7 +235,7 @@ class FastSpeech2(nn.Module):
 
             # output shape : [16, 86, 256] / style_ref_embs shape : [16, 256]
 
-            output = output + style_ref_embs.unsqueeze(1)
+            output = output # + style_ref_embs.unsqueeze(1)
 
             positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
             prosody_embedding = style_ref_embs.unsqueeze(1) + positions
@@ -255,21 +255,24 @@ class FastSpeech2(nn.Module):
             
             style_pred_embs = self.style_pred_fc(style_pred_embs)
 
-            output = output + style_pred_embs.unsqueeze(1)
-            positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])
-            prosody_embedding = style_pred_embs.unsqueeze(1) + positions
+            ## Neutral!!!
+            # output = output + style_pred_embs.unsqueeze(1)
+            # positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])
+            # prosody_embedding = style_pred_embs.unsqueeze(1) + positions
 
-        src_key_padding_mask = output[:, :, 0].eq(self.padding_idx).data
-        prosody_key_padding_mask = prosody_embedding[:, :, 0].eq(self.padding_idx).data
+        # src_key_padding_mask = output[:, :, 0].eq(self.padding_idx).data
+        # prosody_key_padding_mask = prosody_embedding[:, :, 0].eq(self.padding_idx).data
 
-        # Text2style_alignment
-        t2s_align, guided_loss_2, attn_emo_list = self.text2style_alignment(
-            output.transpose(0, 1),
-            prosody_embedding.transpose(0, 1),
-            src_key_padding_mask,
-            prosody_key_padding_mask
-        )
-        output = output + t2s_align.transpose(0, 1)
+        ## Neutral!!!
+        # # Text2style_alignment
+        # t2s_align, guided_loss_2, attn_emo_list = self.text2style_alignment(
+        #     output.transpose(0, 1),
+        #     prosody_embedding.transpose(0, 1),
+        #     src_key_padding_mask,
+        #     prosody_key_padding_mask
+        # )
+
+        output = output # + t2s_align.transpose(0, 1)
 
         # Variance Adaptor
         (
@@ -304,7 +307,7 @@ class FastSpeech2(nn.Module):
         postnet_output = self.postnet(output) + output
 
         # Loss
-        guided_loss = guided_loss_1 + guided_loss_2
+        guided_loss = guided_loss_1 # + guided_loss_2
 
         return (
             output,
