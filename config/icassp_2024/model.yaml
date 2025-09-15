@@ -56,3 +56,10 @@ vocoder:
   model: "HiFi-GAN" # support 'HiFi-GAN', 'MelGAN'
   speaker: "finetune" # support  'LJSpeech', 'universal', 'finetune', 'icassp_2024'
   
+
+style_predictor:
+  hidden: 256
+  steps_train: 2
+  steps_infer: 2
+  neutral_id: 5           # emotions.json에서 'neu'가 4라면
+  neutral_ref_noise_k: 0.1

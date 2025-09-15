@@ -124,6 +124,7 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
                 e_control=energy_control,
                 d_control=duration_control,
                 inference=True,
+                intensity=args.intensity,  # 감정 강도 추가
             )
             synth_samples(
                 batch,
@@ -195,6 +196,12 @@ if __name__ == "__main__":
         default=1.0,
         help="control the speed of the whole utterance, larger value for slower speaking rate",
     )
+    parser.add_argument(
+    "--intensity",
+    type=float,
+    default=1.0,   # 지정 안 하면 config 기본값 사용
+    help="Emotion intensity in [0.0, 1.0]; maps to t_end_infer (0=neutral, 1=full).",
+)
     args = parser.parse_args()
 
     # Check source texts
