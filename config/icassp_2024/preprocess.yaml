@@ -5,6 +5,7 @@ path:
   raw_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_data/emo_kr_22050"
   preprocessed_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050"
   mfa_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_data/emo_kr_22050_mfa"
+  curr_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop"
 
 preprocessing:
   val_size: 2000

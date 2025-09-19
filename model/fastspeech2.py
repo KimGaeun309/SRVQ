@@ -4,6 +4,7 @@ import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from .text2style_aligner import Text2Style_Aligner
 
@@ -11,7 +12,6 @@ from .text2style_aligner import Text2Style_Aligner
 # from .style_predictor import StylePredictor, LinearNorm
 from .style_predictor_flow import StylePredictorFlow
 from .style_predictor import LinearNorm
-
 from .transformers.transformer import Encoder, Decoder, MelDecoder, LightMelDecoder
 from .transformers.layers import PostNet
 from .modules import VarianceAdaptor, SinusoidalPositionalEmbedding
@@ -58,6 +58,12 @@ class FastSpeech2(nn.Module):
                 n_speaker,
                 model_config["transformer"]["encoder_hidden"],
             )
+
+        
+        neu_path = os.path.join(preprocess_config["path"]["curr_path"], "emotion_style_vectors", "neu_style.npy")
+
+        neu_style_vector = np.load(neu_path).astype("float32").sqeeze()
+        
 
         self.emotion_emb = None
         if model_config["multi_emotion"]:
@@ -261,29 +267,28 @@ class FastSpeech2(nn.Module):
 
 
             # --------------------------
-            # (B) Rectified Flow predictor  →  style_pred_vec & flow_loss
+            # (B) Rectified Flow predictor  →  style_pred_embs & flow_loss
             # --------------------------
+            t_end_train  = float(self.model_config["style_predictor"].get("t_end_train", 1.0))
+            steps_train  = int(self.model_config["style_predictor"].get("steps_train", 2))
 
-            t_end_train = self.model_config["style_predictor"].get("t_end_train", 1.0)
-            steps_train = self.model_config["style_predictor"].get("steps_train", 2)
+            # 1) RF 타깃 구성: 기본은 style_ref_embs, neutral만 spk_emb로 치환
+            target_style_for_flow = style_ref_embs.detach().clone()
+            target_style_for_flow = target_style_for_flow.to(output.device, output.dtype)
 
-            style_ref_target = style_ref_embs
             if (self.neutral_id is not None) and (spk_emb is not None):
                 neutral_mask = (emotions == self.neutral_id)
                 if neutral_mask.any():
-                    # detach + optional relative noise
-                    # spk_target = self._relative_noise(spk_emb.detach(), self.neutral_ref_noise_k)
-                    spk_target = spk_emb.detach()
-                    # shape 맞추기: style_ref_embs는 [B, D]
-                    style_ref_target = style_ref_target.clone()
-                    style_ref_target[neutral_mask] = spk_target[neutral_mask]
+                    # neutral 샘플은 RF 타깃을 화자 임베딩으로 고정(grad 차단)
+                    target_style_for_flow[neutral_mask] = spk_emb.detach()[neutral_mask].to(target_style_for_flow.dtype)
+
 
             style_pred_embs, flow_loss = self.style_predictor(
                 text_enc=output,             # [B,T,256]
                 style_tag_emb=style_tag_emb, # [B,256]
                 spk_emb=spk_emb,             # [B,256] or None
                 text_mask=text_mask,         # [B,T] bool
-                target_style=style_ref_target, # x1 supervision: [B,256]
+                target_style=target_style_for_flow, # x1 supervision: [B,256]
                 return_loss=True,
                 t_end=t_end_train,
                 steps=steps_train,
