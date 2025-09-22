@@ -61,15 +61,11 @@ class FastSpeech2(nn.Module):
 
         
         neu_path = os.path.join(preprocess_config["path"]["curr_path"], "emotion_style_vectors", "neu_style.npy")
-
-        neu_vec = np.load(neu_path).astype("float32").squeeze()  # [D]
-        assert neu_vec.ndim == 1, "neu_style.npy must be 1-D"
-        # 모델 내 고정 버퍼로 보관(학습 제외, device 자동 이동)
-        self.register_buffer("neu_emb", torch.from_numpy(neu_vec))  # [D]
-        # 선택: 차원 검증
-        assert self.neu_emb.numel() == model_config["residual_vq"]["vq_hidden"], \
-            f"neu_emb dim {self.neu_emb.numel()} != vq_hidden"
-                
+        neu_vec = np.load(neu_path).astype("float32").squeeze()          # [256]
+        assert neu_vec.ndim == 1
+        assert neu_vec.size == model_config["residual_vq"]["vq_hidden"]
+        # 1×256 버퍼로 보관
+        self.register_buffer("neu_base", torch.from_numpy(neu_vec).unsqueeze(0))  # [1,256]       
 
         self.emotion_emb = None
         if model_config["multi_emotion"]:
@@ -232,6 +228,10 @@ class FastSpeech2(nn.Module):
 
         guided_loss_1 = torch.tensor(0.0, device=device)     # cross-attn 대신 
 
+        B = output.size(0)
+        neu_emb = self.neu_base.to(output.device, output.dtype).expand(B, -1).contiguous()  # [B,256]       
+
+
         if not inference:
             
             
@@ -286,15 +286,13 @@ class FastSpeech2(nn.Module):
             if self.neutral_id is not None:
                 neutral_mask = (emotions == self.neutral_id)  # [B]
                 if neutral_mask.any():
-                    neu = self.neu_emb.to(target_style_for_flow.dtype).unsqueeze(0).expand_as(target_style_for_flow)  # [B,D]
-                    target_style_for_flow = target_style_for_flow.clone()
-                    target_style_for_flow[neutral_mask] = neu[neutral_mask]
+                    neu = neu_emb.to(target_style_for_flow.dtype)
 
             style_pred_embs, flow_loss = self.style_predictor(
                 text_enc=output,                 # [B,T,256]
                 style_tag_emb=style_tag_emb,     # [B,256]
 #                spk_emb=spk_emb,                 # [B,256] or None
-                neu_emb=self.neu_emb,            # [D]  ← 추가: x0로 사용
+                neu_emb=neu_emb,            # [D]  ← 추가: x0로 사용
                 text_mask=text_mask,             # [B,T] bool
                 target_style=target_style_for_flow,  # x1 supervision: [B,256]
                 return_loss=True,
@@ -322,7 +320,7 @@ class FastSpeech2(nn.Module):
                 text_enc=output,
                 style_tag_emb=style_tag_emb,
 #                spk_emb=spk_emb,
-                neu_emb=self.neu_emb,    # ← 추가
+                neu_emb=neu_emb,    # ← 추가
                 text_mask=text_mask,
                 t_end=t_end_infer,
                 steps=self.model_config["style_predictor"].get("steps_infer", 2),
@@ -332,7 +330,7 @@ class FastSpeech2(nn.Module):
             if self.neutral_id is not None:
                 neutral_mask = (emotions == self.neutral_id)
                 if neutral_mask.any():
-                    neu = self.neu_emb.to(style_pred_embs.dtype).unsqueeze(0).expand_as(style_pred_embs)
+                    neu = neu_emb.to(style_pred_embs.dtype).unsqueeze(0).expand_as(style_pred_embs)
                     style_pred_embs = style_pred_embs.clone()
                     style_pred_embs[neutral_mask] = neu[neutral_mask]
             
