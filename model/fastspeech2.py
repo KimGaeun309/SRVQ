@@ -312,36 +312,36 @@ class FastSpeech2(nn.Module):
 
         else:
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
-            # style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
+
             t_end_infer = float(intensity)
             t_end_infer = max(0.0, min(1.0, t_end_infer))  # clamp
 
+            # neu_emb: [B,256] (forward 초반에 만든 것 그대로)
             style_pred_embs = self.style_predictor(
                 text_enc=output,
                 style_tag_emb=style_tag_emb,
-#                spk_emb=spk_emb,
-                neu_emb=neu_emb,    # ← 추가
+                neu_emb=neu_emb,                     # [B,256]
                 text_mask=text_mask,
                 t_end=t_end_infer,
                 steps=self.model_config["style_predictor"].get("steps_infer", 2),
             )  # [B,256]
 
-            # 감정이 neutral이면 강제로 t_end=0과 동일한 효과(= neu_emb)
+            # neutral이면 강제로 neu_emb 사용
             if self.neutral_id is not None:
-                neutral_mask = (emotions == self.neutral_id)
+                neutral_mask = (emotions == self.neutral_id)    # [B]
                 if neutral_mask.any():
-                    neu = neu_emb.to(style_pred_embs.dtype).unsqueeze(0).expand_as(style_pred_embs)
                     style_pred_embs = style_pred_embs.clone()
-                    style_pred_embs[neutral_mask] = neu[neutral_mask]
-            
+                    style_pred_embs[neutral_mask] = neu_emb[neutral_mask]   # 둘 다 [B,256]
+
+            # RVQ stage 확장 및 codebooks 구성
             if self.model_config["residual_vq"]["num_rvq"] == 4:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
+                style_pred_embs = torch.cat([style_pred_embs]*4, dim=1)  # [B,1024]
             elif self.model_config["residual_vq"]["num_rvq"] == 3:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq3
-                codebook = torch.split(style_pred_embs, 256, dim=1) # vq3
-                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]] # vq3
+                style_pred_embs = torch.cat([style_pred_embs]*3, dim=1)  # [B,768]
+                z1,z2,z3 = torch.split(style_pred_embs, 256, dim=1)
+                codebooks = [z1, z2, z3, z1+z2+z3]
             elif self.model_config["residual_vq"]["num_rvq"] == 2:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
+                style_pred_embs = torch.cat([style_pred_embs]*2, dim=1)  # [B,512]
 
             
             style_pred_embs = self.style_pred_fc(style_pred_embs)
