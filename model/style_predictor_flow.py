@@ -276,7 +276,7 @@ class StylePredictorFlow(nn.Module):
         self,
         text_enc: torch.Tensor,           # [B,T,dim_text]
         style_tag_emb: torch.Tensor,      # [B,dim_tag]
-        spk_emb: Optional[torch.Tensor] = None,   # [B,dim_spk] or None
+        neu_emb: Optional[torch.Tensor] = None,   # [B,dim_spk] or None
         text_mask: Optional[torch.Tensor] = None, # [B,T] bool
         target_style: Optional[torch.Tensor] = None,  # [B,dim_style] (x1, train에서 주면 RF loss 계산)
         return_loss: bool = False,

@@ -62,8 +62,14 @@ class FastSpeech2(nn.Module):
         
         neu_path = os.path.join(preprocess_config["path"]["curr_path"], "emotion_style_vectors", "neu_style.npy")
 
-        neu_style_vector = np.load(neu_path).astype("float32").sqeeze()
-        
+        neu_vec = np.load(neu_path).astype("float32").squeeze()  # [D]
+        assert neu_vec.ndim == 1, "neu_style.npy must be 1-D"
+        # 모델 내 고정 버퍼로 보관(학습 제외, device 자동 이동)
+        self.register_buffer("neu_emb", torch.from_numpy(neu_vec))  # [D]
+        # 선택: 차원 검증
+        assert self.neu_emb.numel() == model_config["residual_vq"]["vq_hidden"], \
+            f"neu_emb dim {self.neu_emb.numel()} != vq_hidden"
+                
 
         self.emotion_emb = None
         if model_config["multi_emotion"]:
@@ -269,30 +275,32 @@ class FastSpeech2(nn.Module):
             # --------------------------
             # (B) Rectified Flow predictor  →  style_pred_embs & flow_loss
             # --------------------------
+            # (B) Rectified Flow predictor
             t_end_train  = float(self.model_config["style_predictor"].get("t_end_train", 1.0))
             steps_train  = int(self.model_config["style_predictor"].get("steps_train", 2))
 
-            # 1) RF 타깃 구성: 기본은 style_ref_embs, neutral만 spk_emb로 치환
-            target_style_for_flow = style_ref_embs.detach().clone()
-            target_style_for_flow = target_style_for_flow.to(output.device, output.dtype)
+            # 기본 타깃은 style_ref_embs
+            target_style_for_flow = style_ref_embs.detach().to(output.dtype)
 
-            if (self.neutral_id is not None) and (spk_emb is not None):
-                neutral_mask = (emotions == self.neutral_id)
+            # neutral이면 neu_emb로 치환
+            if self.neutral_id is not None:
+                neutral_mask = (emotions == self.neutral_id)  # [B]
                 if neutral_mask.any():
-                    # neutral 샘플은 RF 타깃을 화자 임베딩으로 고정(grad 차단)
-                    target_style_for_flow[neutral_mask] = spk_emb.detach()[neutral_mask].to(target_style_for_flow.dtype)
-
+                    neu = self.neu_emb.to(target_style_for_flow.dtype).unsqueeze(0).expand_as(target_style_for_flow)  # [B,D]
+                    target_style_for_flow = target_style_for_flow.clone()
+                    target_style_for_flow[neutral_mask] = neu[neutral_mask]
 
             style_pred_embs, flow_loss = self.style_predictor(
-                text_enc=output,             # [B,T,256]
-                style_tag_emb=style_tag_emb, # [B,256]
-                spk_emb=spk_emb,             # [B,256] or None
-                text_mask=text_mask,         # [B,T] bool
-                target_style=target_style_for_flow, # x1 supervision: [B,256]
+                text_enc=output,                 # [B,T,256]
+                style_tag_emb=style_tag_emb,     # [B,256]
+#                spk_emb=spk_emb,                 # [B,256] or None
+                neu_emb=self.neu_emb,            # [D]  ← 추가: x0로 사용
+                text_mask=text_mask,             # [B,T] bool
+                target_style=target_style_for_flow,  # x1 supervision: [B,256]
                 return_loss=True,
                 t_end=t_end_train,
                 steps=steps_train,
-            )  # -> [B,256], scalar
+            )
 
             # RVQ stage 수에 맞게 복제 
             if self.model_config["residual_vq"]["num_rvq"] == 4:
@@ -307,18 +315,26 @@ class FastSpeech2(nn.Module):
         else:
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
             # style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
-            t_end_infer = intensity
-            steps_infer = self.model_config["style_predictor"].get("steps_infer", 2)
+            t_end_infer = float(intensity)
+            t_end_infer = max(0.0, min(1.0, t_end_infer))  # clamp
 
             style_pred_embs = self.style_predictor(
                 text_enc=output,
                 style_tag_emb=style_tag_emb,
-                spk_emb=spk_emb,
+#                spk_emb=spk_emb,
+                neu_emb=self.neu_emb,    # ← 추가
                 text_mask=text_mask,
                 t_end=t_end_infer,
-                steps=steps_infer,
+                steps=self.model_config["style_predictor"].get("steps_infer", 2),
             )  # [B,256]
 
+            # 감정이 neutral이면 강제로 t_end=0과 동일한 효과(= neu_emb)
+            if self.neutral_id is not None:
+                neutral_mask = (emotions == self.neutral_id)
+                if neutral_mask.any():
+                    neu = self.neu_emb.to(style_pred_embs.dtype).unsqueeze(0).expand_as(style_pred_embs)
+                    style_pred_embs = style_pred_embs.clone()
+                    style_pred_embs[neutral_mask] = neu[neutral_mask]
             
             if self.model_config["residual_vq"]["num_rvq"] == 4:
                 style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
