@@ -417,5 +417,5 @@ class FastSpeech2(nn.Module):
             flow_loss, # Edit!
             min_encoding_indices,
             orig_style_ref_embs, # Edit!
-            spk_emb, # Edit!
+            neu_emb, # Edit!
         )

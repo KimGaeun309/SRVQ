@@ -99,7 +99,7 @@ class FastSpeech2Loss(nn.Module):
             flow_loss,
             min_encoding_indices,
             orig_style_ref_embs,
-            spk_emb,                     # ★ 추가: fastspeech2.forward에서 넘겨줌
+            neu_emb,                     # ★ 추가: fastspeech2.forward에서 넘겨줌
         ) = predictions
 
         # ====== 마스크/타겟 정리 ======
@@ -150,15 +150,15 @@ class FastSpeech2Loss(nn.Module):
 
         # style_ref 타겟을 복사한 뒤, neutral이면 spk_emb로 치환(grad 막기 + 선택적 noise)
         style_ref_target = style_ref_embs.detach()
-        if (self.neutral_id is not None) and (spk_emb is not None):
+        if (self.neutral_id is not None) and (neu_emb is not None):
             neutral_mask = (emotions == self.neutral_id)
             if neutral_mask.any():
                 # detach + optional relative noise
                 # spk_target = self._relative_noise(spk_emb.detach(), self.neutral_ref_noise_k)
-                spk_target = spk_emb.detach()
+                neu_target = neu_emb.detach()
                 # shape 맞추기: style_ref_embs는 [B, D]
                 style_ref_target = style_ref_target.clone()
-                style_ref_target[neutral_mask] = spk_target[neutral_mask]
+                style_ref_target[neutral_mask] = neu_target[neutral_mask]
 
         # predictor MSE (flow 기반 predictor라도 보조 MSE는 regularizer로 유용)
         style_loss = self.mae_loss(style_pred_embs, style_ref_target) * 0.1
