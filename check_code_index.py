@@ -66,3 +66,4 @@ for emo, rvq_info in emotion_code_info.items():
     style_vector = torch.cat(final_vecs, dim=0).numpy()
     print(f"Emotion: {emo} | Shape: {style_vector.shape}")
     np.save(f"emotion_style_vectors_mode/{emo}_style.npy", style_vector)
+
