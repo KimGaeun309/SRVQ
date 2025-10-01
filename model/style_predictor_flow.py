@@ -44,7 +44,7 @@ class SinusoidalTimeEmbedding(nn.Module):
 # ----------------- Transformer-based velocity field -----------------
 class TransformerVelocityField(nn.Module):
     """
-    v_theta(x_t, t, cond): [B, Dx] x [B,1] x (text_ctx:[B,H_t], tag:[B,H_tag], opt spk:[B,H_s]) -> [B, Dx]
+    v_theta(x_t, t, cond): [B, Dx] x [B,1] x (text_ctx:[B,H_t], tag:[B,H_tag], opt neu:[B,H_s]) -> [B, Dx]
     - x_token(=x_t)에 시간 임베딩을 더해 query로 사용
     - cond 토큰(텍스트 요약, 스타일 태그[, 스피커])과 self-attention
     - 최종 x_token hidden을 MLP로 Dx 속도로 투영
@@ -56,27 +56,31 @@ class TransformerVelocityField(nn.Module):
         nhead: int,
         nlayers: int,
         dropout: float,
-        use_spk_token: bool = False,
+        use_neu_token: bool = False,
         dim_text_ctx: int = 256,  # 입력: text pooled dim (= encoder_hidden)
         dim_tag: int = 256,       # 입력: style tag dim (emotion emb dim)
-        dim_spk: int = 0,         # 입력: speaker emb dim
+        dim_neu: int = 0,         # 입력: speaker emb dim
     ):
         super().__init__()
         self.dim_x = dim_x
-        self.use_spk_token = use_spk_token and (dim_spk is not None) and (dim_spk > 0)
+        self.use_neu_token = use_neu_token and (dim_neu is not None) and (dim_neu > 0)
 
         # 토큰 프로젝션
         self.x_proj   = nn.Linear(dim_x, d_model)
         self.txt_proj = nn.Linear(dim_text_ctx, d_model)
         self.tag_proj = nn.Linear(dim_tag, d_model)
-        if self.use_spk_token:
-            self.spk_proj = nn.Linear(dim_spk, d_model)
+        if self.use_neu_token:
+            self.neu_proj = nn.Linear(dim_neu, d_model)
+
+        self.include_x0_token = True  # 또는 config에서 받기
+        if self.include_x0_token:
+            self.x0_proj = nn.Linear(dim_x, d_model)  # x₀도 style vector이므로 dim_x 사용
+
+        num_tokens = 3 + int(self.use_neu_token) + int(self.include_x0_token)
+        self.pos_emb = nn.Parameter(torch.zeros(1, num_tokens, d_model))
 
         # 시간 임베딩을 x token에 더해줌
         self.t_emb = SinusoidalTimeEmbedding(hidden=d_model)
-
-        # 간단한 위치 임베딩(토큰 수가 작아도 안정성 ↑)
-        self.pos_emb = nn.Parameter(torch.zeros(1, 3 + int(self.use_spk_token), d_model))
 
         # Transformer Encoder
         enc_layer = nn.TransformerEncoderLayer(
@@ -104,21 +108,26 @@ class TransformerVelocityField(nn.Module):
         *,
         text_ctx: torch.Tensor,
         style_tag_emb: torch.Tensor,
-        spk_cond: Optional[torch.Tensor] = None,
+        neu_cond: Optional[torch.Tensor] = None,
+        x0: torch.Tensor,
     ) -> torch.Tensor:
         # 모두 x_t와 동일한 device/dtype으로 정렬
         t            = t.to(device=x_t.device, dtype=x_t.dtype)
         text_ctx     = text_ctx.to(device=x_t.device, dtype=x_t.dtype)
         style_tag_emb= style_tag_emb.to(device=x_t.device, dtype=x_t.dtype)
-        if self.use_spk_token and (spk_cond is not None):
-            spk_cond = spk_cond.to(device=x_t.device, dtype=x_t.dtype)
+        if self.use_neu_token and (neu_cond is not None):
+            neu_cond = neu_cond.to(device=x_t.device, dtype=x_t.dtype)
 
         x_tok   = self.x_proj(x_t) + self.t_emb(t)
         txt_tok = self.txt_proj(text_ctx)
         tag_tok = self.tag_proj(style_tag_emb)
         tokens = [x_tok, txt_tok, tag_tok]
-        if self.use_spk_token and (spk_cond is not None):
-            tokens.append(self.spk_proj(spk_cond))
+        if self.use_neu_token and (neu_cond is not None):
+            tokens.append(self.neu_proj(neu_cond))
+
+        if self.include_x0_token:
+            x0_tok = self.x0_proj(x0)  # [B, d_model]
+            tokens.append(x0_tok)
 
         h = torch.stack(tokens, dim=1)
         h = h + self.pos_emb[:, :h.size(1), :]
@@ -140,28 +149,28 @@ class StylePredictorFlow(nn.Module):
         self,
         dim_text: int = 256,
         dim_tag: int = 256,
-        dim_spk: int = 256,
+        dim_neu: int = 256,
         dim_style: int = 256,
         hidden: int = 256,
         dropout: float = 0.1,
         use_transformer_block: bool = False,  # (호환용; 항상 Transformer 사용)
         nhead: int = 2,
         nlayers: int = 1,
-        # ▼ relative noise 계수 k (σ_eff = clamp(k * RMS(spk_emb), 1e-3, 0.5))
+        # ▼ relative noise 계수 k (σ_eff = clamp(k * RMS(neu_emb), 1e-3, 0.5))
         noise_k_train: float = 0.1,
         noise_k_infer: float = 0.0,
     ):
         super().__init__()
         self.dim_style = dim_style
-        self.dim_spk   = dim_spk
-        assert (self.dim_spk == 0) or (self.dim_spk == self.dim_style), \
-            f"dim_spk({self.dim_spk}) must equal dim_style({self.dim_style}) when using spk_emb as x0."
+        self.dim_neu   = dim_neu
+        assert (self.dim_neu == 0) or (self.dim_neu == self.dim_style), \
+            f"dim_neu({self.dim_neu}) must equal dim_style({self.dim_style}) when using neu_emb as x0."
 
         # 텍스트 요약(고정 길이 cond)
         self.text_norm = nn.LayerNorm(dim_text)
 
-        # spk 토큰을 cond에 추가할지 (필요 시 True)
-        self.include_spk_in_cond = False
+        # neu 토큰을 cond에 추가할지 (필요 시 True)
+        self.include_neu_in_cond = False
 
         # Transformer velocity field
         self.vfield = TransformerVelocityField(
@@ -170,10 +179,10 @@ class StylePredictorFlow(nn.Module):
             nhead=nhead,
             nlayers=nlayers,
             dropout=dropout,
-            use_spk_token=self.include_spk_in_cond,
+            use_neu_token=self.include_neu_in_cond,
             dim_text_ctx=dim_text,
             dim_tag=dim_tag,
-            dim_spk=dim_spk,
+            dim_neu=dim_neu,
         )
 
         # Rectified Flow 엔진: 직선 보간
@@ -201,7 +210,7 @@ class StylePredictorFlow(nn.Module):
         self.noise_k_train = float(noise_k_train)
         self.noise_k_infer = float(noise_k_infer)
 
-        # spk_emb가 없는 경우 대비 기본 베이스(학습됨)
+        # neu_emb가 없는 경우 대비 기본 베이스(학습됨)
         self.fallback_base = nn.Parameter(torch.zeros(1, dim_style))
 
         # 수치 적분 스텝 (정확도/속도 트레이드오프)
@@ -213,30 +222,30 @@ class StylePredictorFlow(nn.Module):
         txt = masked_mean(text_enc, text_mask)           # [B, dim_text]
         return self.text_norm(txt)                       # [B, dim_text]
 
-    def _relative_noise(self, spk_emb: torch.Tensor, k: float) -> torch.Tensor:
+    def _relative_noise(self, neu_emb: torch.Tensor, k: float) -> torch.Tensor:
         """
-        σ_eff = clamp(k * RMS(spk_emb), 1e-3, 0.5)
-        x0 = spk_emb + σ_eff * N(0, I)
+        σ_eff = clamp(k * RMS(neu_emb), 1e-3, 0.5)
+        x0 = neu_emb + σ_eff * N(0, I)
         """
         if k <= 0.0:
-            return spk_emb
+            return neu_emb
         # RMS per sample: [B,1]
-        rms = spk_emb.detach().pow(2).mean(dim=1, keepdim=True).sqrt()
+        rms = neu_emb.detach().pow(2).mean(dim=1, keepdim=True).sqrt()
         sigma_eff = (k * rms).clamp(min=1e-3, max=0.5)   # 보호 클램프
-        noise = torch.randn_like(spk_emb) * sigma_eff    # 브로드캐스트로 [B,D]
-        return spk_emb + noise
+        noise = torch.randn_like(neu_emb) * sigma_eff    # 브로드캐스트로 [B,D]
+        return neu_emb + noise
 
-    def _make_x0(self, spk_emb: Optional[torch.Tensor], k: float) -> torch.Tensor:
+    def _make_x0(self, neu_emb: Optional[torch.Tensor], k: float) -> torch.Tensor:
         """
-        spk_emb가 있으면 relative noise로 x0 생성, 없으면 fallback 사용.
+        neu_emb가 있으면 relative noise로 x0 생성, 없으면 fallback 사용.
         """
-        if (spk_emb is not None) and (self.dim_spk > 0):
-            x0 = self._relative_noise(spk_emb, k=k)      # ★ 여기서 요청한 방식 적용
-        else:
-            B = spk_emb.size(0) if spk_emb is not None else 1
-            base = self.fallback_base.expand(B, -1)
-            # fallback에는 절대 노이즈를 쓰지 않고 그대로 둠(원하면 필요 시 추가)
-            x0 = base
+        # if (neu_emb is not None) and (self.dim_neu > 0):
+        x0 = self._relative_noise(neu_emb, k=k)      # ★ 여기서 요청한 방식 적용
+        # else:
+        #     B = neu_emb.size(0) if neu_emb is not None else 1
+        #     base = self.fallback_base.expand(B, -1)
+        #     # fallback에는 절대 노이즈를 쓰지 않고 그대로 둠(원하면 필요 시 추가)
+        #     x0 = base
         return x0
 
     def _euler_integrate_to(
@@ -244,7 +253,7 @@ class StylePredictorFlow(nn.Module):
         x0: torch.Tensor,
         text_ctx: torch.Tensor,
         style_tag_emb: torch.Tensor,
-        spk_emb: Optional[torch.Tensor],
+        neu_emb: Optional[torch.Tensor],
         t_end: float,
         steps: int,
     ) -> torch.Tensor:
@@ -265,7 +274,8 @@ class StylePredictorFlow(nn.Module):
                 x, t_tensor,
                 text_ctx=text_ctx,
                 style_tag_emb=style_tag_emb,
-                spk_cond=spk_emb if self.vfield.use_spk_token else None,
+                neu_cond=neu_emb if self.vfield.use_neu_token else None,
+                x0=x0,
             )
             x = x + h * v
             t += h
@@ -276,7 +286,7 @@ class StylePredictorFlow(nn.Module):
         self,
         text_enc: torch.Tensor,           # [B,T,dim_text]
         style_tag_emb: torch.Tensor,      # [B,dim_tag]
-        neu_emb: Optional[torch.Tensor] = None,   # [B,dim_spk] or None
+        neu_emb: Optional[torch.Tensor] = None,   # [B,dim_neu] or None
         text_mask: Optional[torch.Tensor] = None, # [B,T] bool
         target_style: Optional[torch.Tensor] = None,  # [B,dim_style] (x1, train에서 주면 RF loss 계산)
         return_loss: bool = False,
@@ -291,8 +301,8 @@ class StylePredictorFlow(nn.Module):
         text_ctx = self._build_text_ctx(text_enc, text_mask)  # [B, dim_text]
 
         # 2) x0 생성 (학습/추론 모드별 relative noise k 선택)
-        k = self.noise_k_train if ((target_style is not None) and return_loss) else self.noise_k_infer
-        x0 = self._make_x0(neu_emb, k=k).to(text_enc.device)  # [B, dim_style]
+        # k = self.noise_k_train if ((target_style is not None) and return_loss) else self.noise_k_infer
+        x0 = self._make_x0(neu_emb, k=0.1).to(text_enc.device)  # [B, dim_style]
 
         # 3) x(t_end) 계산 (inference 루트)
         integ_steps = steps if (steps is not None) else self.flow_steps
@@ -300,7 +310,7 @@ class StylePredictorFlow(nn.Module):
             x0=x0,
             text_ctx=text_ctx,
             style_tag_emb=style_tag_emb,
-            spk_emb=neu_emb,
+            neu_emb=neu_emb,
             t_end=t_end,
             steps=integ_steps,
         )  # [B, dim_style]
@@ -312,8 +322,64 @@ class StylePredictorFlow(nn.Module):
                 x_1=target_style,
                 text_ctx=text_ctx,
                 style_tag_emb=style_tag_emb,
-                spk_cond=neu_emb if self.vfield.use_spk_token else None,
+                neu_cond=neu_emb if self.vfield.use_neu_token else None,
             )
             return x_t, flow_loss
 
         return x_t
+    
+
+
+
+
+# ---- 새 구조: Multi-Head Style Predictor ----
+class StylePredictorFlowMultiStage(nn.Module):
+    def __init__(self, n_stages: int = 3, **kwargs):
+        super().__init__()
+        self.n_stages = n_stages
+        self.predictors = nn.ModuleList([
+            StylePredictorFlow(**kwargs) for _ in range(n_stages)
+        ])
+
+    def forward(
+        self,
+        text_enc: torch.Tensor,
+        style_tag_emb: torch.Tensor,
+        neu_emb: Optional[torch.Tensor] = None,
+        text_mask: Optional[torch.Tensor] = None,
+        target_style: Optional[torch.Tensor] = None,  # [B, dim_style * n_stages]
+        return_loss: bool = False,
+        t_end: float = 1.0,
+        steps: Optional[int] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
+
+        style_outputs: List[torch.Tensor] = []
+        flow_losses: List[torch.Tensor] = []
+
+        for i, predictor in enumerate(self.predictors):
+            tgt_i = target_style[:, i * predictor.dim_style:(i + 1) * predictor.dim_style] if target_style is not None else None
+
+            out_i = predictor(
+                text_enc=text_enc,
+                style_tag_emb=style_tag_emb,
+                neu_emb=neu_emb,
+                text_mask=text_mask,
+                target_style=tgt_i,
+                return_loss=return_loss,
+                t_end=t_end,
+                steps=steps,
+            )
+
+            if return_loss:
+                x_t, flow_loss = out_i
+                style_outputs.append(x_t)
+                flow_losses.append(flow_loss)
+            else:
+                style_outputs.append(out_i)
+
+        style_concat = torch.cat(style_outputs, dim=-1)  # [B, 256 * 3]
+
+        if return_loss:
+            total_loss = sum(flow_losses) / self.n_stages
+            return style_concat, total_loss
+        return style_concat

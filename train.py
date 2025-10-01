@@ -35,6 +35,9 @@ def train(rank, args, configs, batch_size, num_gpus):
         )
     device = torch.device('cuda:{:d}'.format(rank))
 
+    args.restore_step = int(args.restore_step)
+
+
     # Get Dataset
     dataset = Dataset(
         "train.txt", preprocess_config, train_config, sort=True, drop_last=True
@@ -58,10 +61,11 @@ def train(rank, args, configs, batch_size, num_gpus):
     Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
 
     # Load vocoder
+
     vocoder = get_vocoder(model_config, device)
 
     # Training
-    step = args.restore_step + 1
+    step = int(args.restore_step) + 1
     epoch = 1
     grad_acc_step = train_config["optimizer"]["grad_acc_step"]
     grad_clip_thresh = train_config["optimizer"]["grad_clip_thresh"]
@@ -84,7 +88,7 @@ def train(rank, args, configs, batch_size, num_gpus):
         val_logger = SummaryWriter(val_log_path)
 
         outer_bar = tqdm(total=total_step, desc="Training", position=0)
-        outer_bar.n = args.restore_step
+        outer_bar.n = int(args.restore_step)
         outer_bar.update()
 
     train = True

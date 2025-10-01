@@ -155,8 +155,8 @@ class FastSpeech2Loss(nn.Module):
             if neutral_mask.any():
                 # detach + optional relative noise
                 # spk_target = self._relative_noise(spk_emb.detach(), self.neutral_ref_noise_k)
-                neu_target = neu_emb.detach()
-                # shape 맞추기: style_ref_embs는 [B, D]
+                neu_target = self._relative_noise(neu_emb.detach(), self.neutral_ref_noise_k)
+                # shape 맞추기: style_ref_embs는 [B, D]s
                 style_ref_target = style_ref_target.clone()
                 style_ref_target[neutral_mask] = neu_target[neutral_mask]
 

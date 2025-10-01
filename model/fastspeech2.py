@@ -10,7 +10,7 @@ from .text2style_aligner import Text2Style_Aligner
 
 # # Flow style predictor
 # from .style_predictor import StylePredictor, LinearNorm
-from .style_predictor_flow import StylePredictorFlow
+from .style_predictor_flow import StylePredictorFlowMultiStage
 from .style_predictor import LinearNorm
 from .transformers.transformer import Encoder, Decoder, MelDecoder, LightMelDecoder
 from .transformers.layers import PostNet
@@ -62,10 +62,11 @@ class FastSpeech2(nn.Module):
         
         neu_path = os.path.join(preprocess_config["path"]["curr_path"], "emotion_style_vectors", "neu_style.npy")
         neu_vec = np.load(neu_path).astype("float32").squeeze()          # [256]
+
         assert neu_vec.ndim == 1
         assert neu_vec.size == model_config["residual_vq"]["vq_hidden"]
         # 1×256 버퍼로 보관
-        self.register_buffer("neu_base", torch.from_numpy(neu_vec).unsqueeze(0))  # [1,256]       
+        self.neu_base = nn.Parameter(torch.from_numpy(neu_vec).unsqueeze(0), requires_grad=True)  # [1, 256]    
 
         self.emotion_emb = None
         if model_config["multi_emotion"]:
@@ -139,7 +140,8 @@ class FastSpeech2(nn.Module):
 
         # __init__ 안
         sp_cfg = model_config.get("style_predictor", {})
-        self.style_predictor = StylePredictorFlow(
+        self.style_predictor = StylePredictorFlowMultiStage(
+            n_stages=model_config["residual_vq"]["num_rvq"],
             dim_text=model_config["transformer"]["encoder_hidden"],
             dim_tag=(self.emotion_emb.embedding_dim if self.emotion_emb is not None else model_config["transformer"]["encoder_hidden"]),
             dim_spk=(self.speaker_emb.embedding_dim if self.speaker_emb is not None else 0),
@@ -218,7 +220,7 @@ class FastSpeech2(nn.Module):
 
         # style tag / speaker emb 준비
         style_tag_emb = self.emotion_emb(emotions) if self.emotion_emb is not None else None  # [B, D_tag]
-        spk_emb = self.speaker_emb(speakers) if self.speaker_emb is not None else None        # [B, D_spk] or None
+        # spk_emb = self.speaker_emb(speakers) if self.speaker_emb is not None else None        # [B, D_spk] or None
 
         # text mask (True=pad). src_lens 기준으로 정확히 생성
         B, T, _ = output.shape
@@ -229,13 +231,11 @@ class FastSpeech2(nn.Module):
         guided_loss_1 = torch.tensor(0.0, device=device)     # cross-attn 대신 
 
         B = output.size(0)
-        neu_emb = self.neu_base.to(output.device, output.dtype).expand(B, -1).contiguous()  # [B,256]       
+        neu_emb = self.neu_base.expand(B, -1).contiguous()  # [B,256]    
+        # neu_emb = self.neu_base.expand(B, -1).to(dtype=output.dtype)  # device는 생략 가능
 
 
         if not inference:
-            
-            
-
             # --------------------------
             # Style extractor (레퍼런스 기반 RVQ) - 기존 그대로
             # --------------------------
@@ -279,14 +279,19 @@ class FastSpeech2(nn.Module):
             t_end_train  = float(self.model_config["style_predictor"].get("t_end_train", 1.0))
             steps_train  = int(self.model_config["style_predictor"].get("steps_train", 2))
 
-            # 기본 타깃은 style_ref_embs
-            target_style_for_flow = style_ref_embs.detach().to(output.dtype)
+            # # 기본 타깃은 style_ref_embs
+            # target_style_for_flow = style_ref_embs.detach().to(output.dtype)
 
             # neutral이면 neu_emb로 치환
             if self.neutral_id is not None:
                 neutral_mask = (emotions == self.neutral_id)  # [B]
                 if neutral_mask.any():
-                    neu = neu_emb.to(target_style_for_flow.dtype)
+                    # float dtype 일치
+                    neu = neu_emb.to(orig_style_ref_embs.dtype)
+                    # orig_style_ref_embs: [B, 256 * n_stages] 에 대해 복사
+                    orig_style_ref_embs = orig_style_ref_embs.clone()
+                    orig_style_ref_embs[neutral_mask] = neu_emb[neutral_mask]
+
 
             style_pred_embs, flow_loss = self.style_predictor(
                 text_enc=output,                 # [B,T,256]
@@ -294,19 +299,23 @@ class FastSpeech2(nn.Module):
 #                spk_emb=spk_emb,                 # [B,256] or None
                 neu_emb=neu_emb,            # [D]  ← 추가: x0로 사용
                 text_mask=text_mask,             # [B,T] bool
-                target_style=target_style_for_flow,  # x1 supervision: [B,256]
+                target_style=orig_style_ref_embs.detach(),  # x1 supervision: [B,256]
                 return_loss=True,
                 t_end=t_end_train,
                 steps=steps_train,
             )
 
-            # RVQ stage 수에 맞게 복제 
-            if self.model_config["residual_vq"]["num_rvq"] == 4:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
-            elif self.model_config["residual_vq"]["num_rvq"] == 3:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq3
-            elif self.model_config["residual_vq"]["num_rvq"] == 2:
-                style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
+            # codebooks 구성 (num_rvq == 3 가정)
+            z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
+            codebooks = [z1, z2, z3, z1+z2+z3]
+
+            # # RVQ stage 수에 맞게 복제 
+            # if self.model_config["residual_vq"]["num_rvq"] == 4:
+            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
+            # elif self.model_config["residual_vq"]["num_rvq"] == 3:
+            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq3
+            # elif self.model_config["residual_vq"]["num_rvq"] == 2:
+            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
             
             style_pred_embs = self.style_pred_fc(style_pred_embs) # [16, 256*3] -> [16 ,256]
 
@@ -326,22 +335,16 @@ class FastSpeech2(nn.Module):
                 steps=self.model_config["style_predictor"].get("steps_infer", 2),
             )  # [B,256]
 
+            # codebooks 구성 (num_rvq == 3 가정)
+            z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
+            codebooks = [z1, z2, z3, z1+z2+z3]
+
             # neutral이면 강제로 neu_emb 사용
             if self.neutral_id is not None:
                 neutral_mask = (emotions == self.neutral_id)    # [B]
                 if neutral_mask.any():
                     style_pred_embs = style_pred_embs.clone()
-                    style_pred_embs[neutral_mask] = neu_emb[neutral_mask]   # 둘 다 [B,256]
-
-            # RVQ stage 확장 및 codebooks 구성
-            if self.model_config["residual_vq"]["num_rvq"] == 4:
-                style_pred_embs = torch.cat([style_pred_embs]*4, dim=1)  # [B,1024]
-            elif self.model_config["residual_vq"]["num_rvq"] == 3:
-                style_pred_embs = torch.cat([style_pred_embs]*3, dim=1)  # [B,768]
-                z1,z2,z3 = torch.split(style_pred_embs, 256, dim=1)
-                codebooks = [z1, z2, z3, z1+z2+z3]
-            elif self.model_config["residual_vq"]["num_rvq"] == 2:
-                style_pred_embs = torch.cat([style_pred_embs]*2, dim=1)  # [B,512]
+                    style_pred_embs[neutral_mask] = neu_emb[neutral_mask]  
 
             
             style_pred_embs = self.style_pred_fc(style_pred_embs)
