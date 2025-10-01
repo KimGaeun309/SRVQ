@@ -64,9 +64,9 @@ class FastSpeech2(nn.Module):
         neu_vec = np.load(neu_path).astype("float32").squeeze()          # [256]
 
         assert neu_vec.ndim == 1
-        assert neu_vec.size == model_config["residual_vq"]["vq_hidden"]
+        assert neu_vec.size == model_config["residual_vq"]["vq_hidden"] * model_config["residual_vq"]["num_rvq"]
         # 1×256 버퍼로 보관
-        self.neu_base = nn.Parameter(torch.from_numpy(neu_vec).unsqueeze(0), requires_grad=True)  # [1, 256]    
+        self.neu_base = nn.Parameter(torch.from_numpy(neu_vec).unsqueeze(0), requires_grad=True)  # [1, 256*n_rvq]    
 
         self.emotion_emb = None
         if model_config["multi_emotion"]:
@@ -144,7 +144,7 @@ class FastSpeech2(nn.Module):
             n_stages=model_config["residual_vq"]["num_rvq"],
             dim_text=model_config["transformer"]["encoder_hidden"],
             dim_tag=(self.emotion_emb.embedding_dim if self.emotion_emb is not None else model_config["transformer"]["encoder_hidden"]),
-            dim_spk=(self.speaker_emb.embedding_dim if self.speaker_emb is not None else 0),
+            dim_neu=(model_config["residual_vq"]["vq_hidden"]),
             dim_style=model_config["residual_vq"]["vq_hidden"],
             hidden=sp_cfg.get("hidden", model_config["style_predictor"]["hidden"]),
             dropout=0.1,
@@ -257,25 +257,10 @@ class FastSpeech2(nn.Module):
                     self.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256])
                     self.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256] - style_ref_embs[:, 256:512])
                     
-            # style_ref_embs shape : [16, 256*3]   
 
             orig_style_ref_embs = style_ref_embs
 
-            style_ref_embs = self.style_extract_fc(style_ref_embs) 
-            # self.style_extract_fc : 256*3 -> 256 Linear Layer
 
-            # output shape : [16, 86, 256] / style_ref_embs shape : [16, 256]
-
-            output = output + style_ref_embs.unsqueeze(1)
-
-            positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
-            prosody_embedding = style_ref_embs.unsqueeze(1) + positions
-
-
-            # --------------------------
-            # (B) Rectified Flow predictor  →  style_pred_embs & flow_loss
-            # --------------------------
-            # (B) Rectified Flow predictor
             t_end_train  = float(self.model_config["style_predictor"].get("t_end_train", 1.0))
             steps_train  = int(self.model_config["style_predictor"].get("steps_train", 2))
 
@@ -287,19 +272,23 @@ class FastSpeech2(nn.Module):
                 neutral_mask = (emotions == self.neutral_id)  # [B]
                 if neutral_mask.any():
                     # float dtype 일치
-                    neu = neu_emb.to(orig_style_ref_embs.dtype)
-                    # orig_style_ref_embs: [B, 256 * n_stages] 에 대해 복사
-                    orig_style_ref_embs = orig_style_ref_embs.clone()
-                    orig_style_ref_embs[neutral_mask] = neu_emb[neutral_mask]
+                    neu = neu_emb.to(style_ref_embs.dtype)
+                    # style_ref_embs: [B, 256 * n_stages] 에 대해 복사
+                    style_ref_embs = style_ref_embs.clone()
+                    style_ref_embs[neutral_mask] = neu[neutral_mask]
 
 
+
+            # --------------------------
+            # (B) Rectified Flow predictor  →  style_pred_embs & flow_loss
+            # --------------------------
             style_pred_embs, flow_loss = self.style_predictor(
                 text_enc=output,                 # [B,T,256]
                 style_tag_emb=style_tag_emb,     # [B,256]
 #                spk_emb=spk_emb,                 # [B,256] or None
                 neu_emb=neu_emb,            # [D]  ← 추가: x0로 사용
                 text_mask=text_mask,             # [B,T] bool
-                target_style=orig_style_ref_embs.detach(),  # x1 supervision: [B,256]
+                target_style=style_ref_embs.detach(),  # x1 supervision: [B,256]
                 return_loss=True,
                 t_end=t_end_train,
                 steps=steps_train,
@@ -318,6 +307,19 @@ class FastSpeech2(nn.Module):
             #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
             
             style_pred_embs = self.style_pred_fc(style_pred_embs) # [16, 256*3] -> [16 ,256]
+
+            # self.style_extract_fc : 256*3 -> 256 Linear Layer
+
+            # output shape : [16, 86, 256] / style_ref_embs shape : [16, 256]
+
+            style_ref_embs = self.style_extract_fc(style_ref_embs) 
+            # [B, 256 * n_stages] -> [B, 256]
+
+
+            output = output + style_ref_embs.unsqueeze(1)
+
+            positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
+            prosody_embedding = style_ref_embs.unsqueeze(1) + positions
 
         else:
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None

@@ -323,6 +323,7 @@ class StylePredictorFlow(nn.Module):
                 text_ctx=text_ctx,
                 style_tag_emb=style_tag_emb,
                 neu_cond=neu_emb if self.vfield.use_neu_token else None,
+                x0=x0,
             )
             return x_t, flow_loss
 
@@ -356,13 +357,24 @@ class StylePredictorFlowMultiStage(nn.Module):
         style_outputs: List[torch.Tensor] = []
         flow_losses: List[torch.Tensor] = []
 
+
+
+        # 뉴트럴 벡터 분할: neu_emb → [B,256] * n_stages
+        neu_chunks = (
+            torch.chunk(neu_emb, self.n_stages, dim=-1)
+            if neu_emb is not None and neu_emb.size(-1) == self.n_stages * self.predictors[0].dim_style
+            else [None] * self.n_stages
+        )
+
+        if neu_chunks is None: print("neu_chunks is None")
+
         for i, predictor in enumerate(self.predictors):
             tgt_i = target_style[:, i * predictor.dim_style:(i + 1) * predictor.dim_style] if target_style is not None else None
-
+            
             out_i = predictor(
                 text_enc=text_enc,
                 style_tag_emb=style_tag_emb,
-                neu_emb=neu_emb,
+                neu_emb=neu_chunks[i],
                 text_mask=text_mask,
                 target_style=tgt_i,
                 return_loss=return_loss,
