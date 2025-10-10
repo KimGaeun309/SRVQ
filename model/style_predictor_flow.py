@@ -302,7 +302,8 @@ class StylePredictorFlow(nn.Module):
 
         # 2) x0 생성 (학습/추론 모드별 relative noise k 선택)
         # k = self.noise_k_train if ((target_style is not None) and return_loss) else self.noise_k_infer
-        x0 = self._make_x0(neu_emb, k=0.1).to(text_enc.device)  # [B, dim_style]
+        k = self.noise_k_train if ((target_style is not None) and return_loss) else self.noise_k_infer
+        x0 = self._make_x0(neu_emb, k=k).to(text_enc.device)  # [B, dim_style]
 
         # 3) x(t_end) 계산 (inference 루트)
         integ_steps = steps if (steps is not None) else self.flow_steps

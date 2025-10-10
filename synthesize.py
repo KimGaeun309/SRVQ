@@ -203,6 +203,7 @@ if __name__ == "__main__":
     help="Emotion intensity in [0.0, 1.0]; maps to t_end_infer (0=neutral, 1=full).",
 )
     args = parser.parse_args()
+    args.intensity = max(0.0, min(1.0, args.intensity))  # Clamp intensity to [0.0, 1.0]    
 
     # Check source texts
     # if args.mode == "batch":

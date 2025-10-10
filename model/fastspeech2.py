@@ -326,7 +326,6 @@ class FastSpeech2(nn.Module):
 
             t_end_infer = float(intensity)
             t_end_infer = max(0.0, min(1.0, t_end_infer))  # clamp
-
             # neu_emb: [B,256] (forward 초반에 만든 것 그대로)
             style_pred_embs = self.style_predictor(
                 text_enc=output,
@@ -334,7 +333,7 @@ class FastSpeech2(nn.Module):
                 neu_emb=neu_emb,                     # [B,256]
                 text_mask=text_mask,
                 t_end=t_end_infer,
-                steps=self.model_config["style_predictor"].get("steps_infer", 2),
+                steps=self.model_config["style_predictor"].get("steps_infer", 1),
             )  # [B,256]
 
             # codebooks 구성 (num_rvq == 3 가정)
