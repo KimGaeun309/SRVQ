@@ -267,15 +267,15 @@ class FastSpeech2(nn.Module):
             # # 기본 타깃은 style_ref_embs
             # target_style_for_flow = style_ref_embs.detach().to(output.dtype)
 
-            # neutral이면 neu_emb로 치환
-            if self.neutral_id is not None:
-                neutral_mask = (emotions == self.neutral_id)  # [B]
-                if neutral_mask.any():
-                    # float dtype 일치
-                    neu = neu_emb.to(style_ref_embs.dtype)
-                    # style_ref_embs: [B, 256 * n_stages] 에 대해 복사
-                    style_ref_embs = style_ref_embs.clone()
-                    style_ref_embs[neutral_mask] = neu[neutral_mask]
+            # # neutral이면 neu_emb로 치환
+            # if self.neutral_id is not None:
+            #     neutral_mask = (emotions == self.neutral_id)  # [B]
+            #     if neutral_mask.any():
+            #         # float dtype 일치
+            #         neu = neu_emb.to(style_ref_embs.dtype)
+            #         # style_ref_embs: [B, 256 * n_stages] 에 대해 복사
+            #         style_ref_embs = style_ref_embs.clone()
+            #         style_ref_embs[neutral_mask] = neu[neutral_mask]
 
 
 
@@ -293,6 +293,8 @@ class FastSpeech2(nn.Module):
                 t_end=t_end_train,
                 steps=steps_train,
             )
+
+            orig_style_pred_embs = style_pred_embs
 
             # codebooks 구성 (num_rvq == 3 가정)
             z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
@@ -324,6 +326,8 @@ class FastSpeech2(nn.Module):
         else:
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
 
+
+
             t_end_infer = float(intensity)
             t_end_infer = max(0.0, min(1.0, t_end_infer))  # clamp
             # neu_emb: [B,256] (forward 초반에 만든 것 그대로)
@@ -336,16 +340,19 @@ class FastSpeech2(nn.Module):
                 steps=self.model_config["style_predictor"].get("steps_infer", 1),
             )  # [B,256]
 
+            orig_style_pred_embs = style_pred_embs
+
+
             # codebooks 구성 (num_rvq == 3 가정)
             z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
             codebooks = [z1, z2, z3, z1+z2+z3]
 
-            # neutral이면 강제로 neu_emb 사용
-            if self.neutral_id is not None:
-                neutral_mask = (emotions == self.neutral_id)    # [B]
-                if neutral_mask.any():
-                    style_pred_embs = style_pred_embs.clone()
-                    style_pred_embs[neutral_mask] = neu_emb[neutral_mask]  
+            # # neutral이면 강제로 neu_emb 사용
+            # if self.neutral_id is not None:
+            #     neutral_mask = (emotions == self.neutral_id)    # [B]
+            #     if neutral_mask.any():
+            #         style_pred_embs = style_pred_embs.clone()
+            #         style_pred_embs[neutral_mask] = neu_emb[neutral_mask]  
 
             
             style_pred_embs = self.style_pred_fc(style_pred_embs)
@@ -422,4 +429,5 @@ class FastSpeech2(nn.Module):
             min_encoding_indices,
             orig_style_ref_embs, # Edit!
             neu_emb, # Edit!
+            orig_style_pred_embs,
         )

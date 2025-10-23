@@ -157,7 +157,7 @@ class StylePredictorFlow(nn.Module):
         nhead: int = 2,
         nlayers: int = 1,
         # ▼ relative noise 계수 k (σ_eff = clamp(k * RMS(neu_emb), 1e-3, 0.5))
-        noise_k_train: float = 0.1,
+        noise_k_train: float = 0.05,
         noise_k_infer: float = 0.0,
     ):
         super().__init__()
@@ -301,7 +301,6 @@ class StylePredictorFlow(nn.Module):
         text_ctx = self._build_text_ctx(text_enc, text_mask)  # [B, dim_text]
 
         # 2) x0 생성 (학습/추론 모드별 relative noise k 선택)
-        # k = self.noise_k_train if ((target_style is not None) and return_loss) else self.noise_k_infer
         k = self.noise_k_train if ((target_style is not None) and return_loss) else self.noise_k_infer
         x0 = self._make_x0(neu_emb, k=k).to(text_enc.device)  # [B, dim_style]
 

@@ -100,6 +100,7 @@ class FastSpeech2Loss(nn.Module):
             min_encoding_indices,
             orig_style_ref_embs,
             neu_emb,                     # ★ 추가: fastspeech2.forward에서 넘겨줌
+            orig_style_pred_embs,
         ) = predictions
 
         # ====== 마스크/타겟 정리 ======
@@ -148,17 +149,17 @@ class FastSpeech2Loss(nn.Module):
         B = emotions.size(0)
         device = emotions.device
 
-        # style_ref 타겟을 복사한 뒤, neutral이면 spk_emb로 치환(grad 막기 + 선택적 noise)
-        style_ref_target = orig_style_ref_embs.detach()
-        if (self.neutral_id is not None) and (neu_emb is not None):
-            neutral_mask = (emotions == self.neutral_id)
-            if neutral_mask.any():
-                # detach + optional relative noise
-                # spk_target = self._relative_noise(spk_emb.detach(), self.neutral_ref_noise_k)
-                neu_target = neu_emb.to(style_ref_target.dtype)
-                # shape 맞추기: style_ref_embs는 [B, D]s
-                style_ref_target = style_ref_target.clone()
-                style_ref_target[neutral_mask] = neu_target[neutral_mask]
+        # # style_ref 타겟을 복사한 뒤, neutral이면 spk_emb로 치환(grad 막기 + 선택적 noise)
+        # style_ref_target = orig_style_ref_embs.detach()
+        # if (self.neutral_id is not None) and (neu_emb is not None):
+        #     neutral_mask = (emotions == self.neutral_id)
+        #     if neutral_mask.any():
+        #         # detach + optional relative noise
+        #         # spk_target = self._relative_noise(spk_emb.detach(), self.neutral_ref_noise_k)
+        #         neu_target = neu_emb.to(style_ref_target.dtype)
+        #         # shape 맞추기: style_ref_embs는 [B, D]s
+        #         style_ref_target = style_ref_target.clone()
+        #         style_ref_target[neutral_mask] = neu_target[neutral_mask]
 
         # predictor MSE (flow 기반 predictor라도 보조 MSE는 regularizer로 유용)
         style_loss = self.mae_loss(style_pred_embs, style_ref_embs) * 0.1
@@ -179,6 +180,13 @@ class FastSpeech2Loss(nn.Module):
                 rvq_neu = orig_style_ref_embs[neutral_mask]  # [N, 768]
                 neu_ref = neu_emb[neutral_mask]               # [N, 768]
                 neutral_l2_loss = F.mse_loss(rvq_neu, neu_ref)
+
+        # emotions, device 위에서 이미 있음
+        neutral_mask = (emotions == self.neutral_id).bool()
+
+        L_neu_pred = torch.tensor(0.0, device=device)
+        if (self.neutral_id is not None) and (neu_emb is not None) and neutral_mask.any():
+            L_neu_pred = F.mse_loss(orig_style_pred_embs[neutral_mask], neu_emb[neutral_mask])  # pred vs x0
 
         # ====== Triplet loss (neutral만 stop-grad) ======
         classifier_loss = torch.zeros_like(mel_loss)
@@ -214,11 +222,15 @@ class FastSpeech2Loss(nn.Module):
                 if anchor is not None:
                     classifier_loss = classifier_loss + self.triplet_margin_loss_fn(anchor, positive, negative) * 0.1
 
+
+
+
         # ====== 총합 ======
         total_loss = (
             mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss
             + total_style_loss + vq_loss + classifier_loss
             + neutral_l2_loss * 1.0
+            + L_neu_pred * 1.0
         )
 
         return (

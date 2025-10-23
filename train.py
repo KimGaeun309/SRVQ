@@ -144,6 +144,32 @@ def train(rank, args, configs, batch_size, num_gpus):
                 scaler.update()
                 optimizer.zero_grad()
 
+                #### Update neu_base (EMA, x0) ####
+                # EMA neutral anchor update
+                if hasattr(model, "module"):
+                    fs2 = model.module
+                else:
+                    fs2 = model
+
+                alpha = 1e-3
+                emotions = batch[3]  # (B,)
+                orig_style_ref_embs = output[-2]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs                    
+                neu_emb = output[-1]              # fastspeech2.forward 반환 순서상 neu_emb
+
+                neutral_mask = (emotions == fs2.neutral_id)
+                neutral_mask = neutral_mask.bool()  # ← 추가
+
+                if neutral_mask.any():
+                    rvq_mean = orig_style_ref_embs[neutral_mask].mean(dim=0, keepdim=True)
+                    rvq_mean = rvq_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype)
+                    
+                    with torch.no_grad():
+                        fs2.neu_base.data.mul_(1 - alpha).add_(alpha * rvq_mean)
+
+
+
+
+
                 if rank == 0:
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]

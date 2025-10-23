@@ -62,4 +62,4 @@ style_predictor:
   steps_train: 2
   steps_infer: 2
   neutral_id: 5           # emotions.json에서 'neu'가 4라면
-  neutral_ref_noise_k: 0.1
+  neutral_ref_noise_k: 0.05
