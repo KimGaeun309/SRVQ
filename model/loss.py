@@ -99,7 +99,7 @@ class FastSpeech2Loss(nn.Module):
             flow_loss,
             min_encoding_indices,
             orig_style_ref_embs,
-            neu_emb,                     # ★ 추가: fastspeech2.forward에서 넘겨줌
+            x0_raw,                     # ★ 추가: fastspeech2.forward에서 넘겨줌
             orig_style_pred_embs,
         ) = predictions
 
@@ -171,22 +171,32 @@ class FastSpeech2Loss(nn.Module):
         guided_loss = guided_loss * 0.1
         total_style_loss = style_loss + guided_loss + style_flow_term
 
-        # ====== Neutral L2 loss: RVQ output vs neu_emb ======
-        neutral_l2_loss = torch.tensor(0.0, device=device)
+        # # ====== Neutral L2 loss: RVQ output vs neu_emb ======
+        # neutral_l2_loss = torch.tensor(0.0, device=device)
 
-        if (self.neutral_id is not None) and (neu_emb is not None):
-            neutral_mask = (emotions == self.neutral_id)
-            if neutral_mask.any():
-                rvq_neu = orig_style_ref_embs[neutral_mask]  # [N, 768]
-                neu_ref = neu_emb[neutral_mask]               # [N, 768]
-                neutral_l2_loss = F.mse_loss(rvq_neu, neu_ref)
+        # if (self.neutral_id is not None) and (neu_emb is not None):
+        #     neutral_mask = (emotions == self.neutral_id)
+        #     if neutral_mask.any():
+        #         rvq_neu = orig_style_ref_embs[neutral_mask]  # [N, 768]
+        #         neu_ref = neu_emb[neutral_mask]               # [N, 768]
+        #         neutral_l2_loss = F.mse_loss(rvq_neu, neu_ref)
 
         # emotions, device 위에서 이미 있음
-        neutral_mask = (emotions == self.neutral_id).bool()
+        # ======== L_neu_pred ==========
+        # neutral_mask = (emotions == self.neutral_id).bool()
 
-        L_neu_pred = torch.tensor(0.0, device=device)
-        if (self.neutral_id is not None) and (neu_emb is not None) and neutral_mask.any():
-            L_neu_pred = F.mse_loss(orig_style_pred_embs[neutral_mask], neu_emb[neutral_mask])  # pred vs x0
+        # L_neu_pred = torch.tensor(0.0, device=device)
+        # if (self.neutral_id is not None) and (neu_emb is not None) and neutral_mask.any():
+        #     L_neu_pred = F.mse_loss(orig_style_pred_embs[neutral_mask], neu_emb[neutral_mask])  # pred vs x0
+
+        # ======== Neutral align loss ========
+        neutral_align_loss = torch.tensor(0.0, device=device)
+        if (self.neutral_id is not None):
+            neutral_mask = (emotions == self.neutral_id)
+            if neutral_mask.any():
+                rvq_neu = orig_style_ref_embs[neutral_mask].detach()  # extractor 차단
+                x0_sel  = x0_raw[neutral_mask]                         # neu_base로 gradient 흐름
+                neutral_align_loss = F.mse_loss(x0_sel, rvq_neu) 
 
         # ====== Triplet loss (neutral만 stop-grad) ======
         classifier_loss = torch.zeros_like(mel_loss)
@@ -229,8 +239,7 @@ class FastSpeech2Loss(nn.Module):
         total_loss = (
             mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss
             + total_style_loss + vq_loss + classifier_loss
-            + neutral_l2_loss * 1.0
-            + L_neu_pred * 1.0
+            + neutral_align_loss * 2.0
         )
 
         return (
@@ -245,5 +254,5 @@ class FastSpeech2Loss(nn.Module):
             vq_loss,
             classifier_loss,
             style_flow_term,
-            neutral_l2_loss,
+            neutral_align_loss,
         )

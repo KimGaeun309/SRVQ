@@ -60,13 +60,19 @@ class FastSpeech2(nn.Module):
             )
 
         
-        neu_path = os.path.join(preprocess_config["path"]["curr_path"], "emotion_style_vectors", "neu_style.npy")
-        neu_vec = np.load(neu_path).astype("float32").squeeze()          # [256]
+        # neu_path = os.path.join(preprocess_config["path"]["curr_path"], "emotion_style_vectors", "neu_style.npy")
+        # neu_vec = np.load(neu_path).astype("float32").squeeze()          # [256]
 
-        assert neu_vec.ndim == 1
-        assert neu_vec.size == model_config["residual_vq"]["vq_hidden"] * model_config["residual_vq"]["num_rvq"]
+        
+        dim = model_config["residual_vq"]["vq_hidden"] * model_config["residual_vq"]["num_rvq"]
+        neu_vec = torch.randn(dim) * 0.02                      # 표준편차는 필요시 조정
+
+        # self.neu_base = nn.Parameter(neu_vec, requires_grad=True)  
+
+        # assert neu_vec.ndim == 1
+        # assert neu_vec.size == dim
         # 1×256 버퍼로 보관
-        self.neu_base = nn.Parameter(torch.from_numpy(neu_vec).unsqueeze(0), requires_grad=True)  # [1, 256*n_rvq]    
+        self.neu_base = nn.Parameter(neu_vec.unsqueeze(0), requires_grad=True)  # [1, 256*n_rvq]    
 
         self.emotion_emb = None
         if model_config["multi_emotion"]:
@@ -230,9 +236,14 @@ class FastSpeech2(nn.Module):
 
         guided_loss_1 = torch.tensor(0.0, device=device)     # cross-attn 대신 
 
+        # B = output.size(0)
+
         B = output.size(0)
-        neu_emb = self.neu_base.expand(B, -1).contiguous()  # [B,256]    
-        # neu_emb = self.neu_base.expand(B, -1).to(dtype=output.dtype)  # device는 생략 가능
+        neu_cond = self.neu_base.detach().expand(B, -1).contiguous()   # predictor/decoder 조건
+        neu_base_for_loss = self.neu_base.expand(B, -1).contiguous()   # 손실용(grad 유지)
+
+        # neu_emb = self.neu_base.expand(B, -1).contiguous()  # [B,256]    
+        # # neu_emb = self.neu_base.expand(B, -1).to(dtype=output.dtype)  # device는 생략 가능
 
 
         if not inference:
@@ -286,7 +297,7 @@ class FastSpeech2(nn.Module):
                 text_enc=output,                 # [B,T,256]
                 style_tag_emb=style_tag_emb,     # [B,256]
 #                spk_emb=spk_emb,                 # [B,256] or None
-                neu_emb=neu_emb,            # [D]  ← 추가: x0로 사용
+                neu_emb=neu_cond,            # [D]  ← 추가: x0로 사용
                 text_mask=text_mask,             # [B,T] bool
                 target_style=style_ref_embs.detach(),  # x1 supervision: [B,256]
                 return_loss=True,
@@ -334,7 +345,7 @@ class FastSpeech2(nn.Module):
             style_pred_embs = self.style_predictor(
                 text_enc=output,
                 style_tag_emb=style_tag_emb,
-                neu_emb=neu_emb,                     # [B,256]
+                neu_emb=neu_cond,                     # [B,256]
                 text_mask=text_mask,
                 t_end=t_end_infer,
                 steps=self.model_config["style_predictor"].get("steps_infer", 1),
@@ -428,6 +439,6 @@ class FastSpeech2(nn.Module):
             flow_loss, # Edit!
             min_encoding_indices,
             orig_style_ref_embs, # Edit!
-            neu_emb, # Edit!
+            neu_base_for_loss, # Edit!
             orig_style_pred_embs,
         )

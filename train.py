@@ -124,8 +124,26 @@ def train(rank, args, configs, batch_size, num_gpus):
                 with amp.autocast(args.use_amp):
                     # Forward
                     output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag) # To do Step
-                    init_flag = False
 
+                    if init_flag:
+                        ### reinitialize x0 with neutral style vector mean
+                        ### Implementation !!!
+                        
+                        with torch.no_grad():
+                            emotions = batch[3]                      # (B,)
+                            ref_embs = output[-2]                    # (B, D)  style extractor output
+                            neutral_mask = (emotions == fs2.neutral_id).bool()
+
+                            if neutral_mask.any():
+                                neutral_embs = ref_embs[neutral_mask]  # (N_neu, D)
+                                neu_mean = neutral_embs.mean(dim=0, keepdim=True)  # [1, D]
+
+                                fs2.neu_base.data.copy_(neu_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype))
+                                print(f"[INIT] neu_base reinitialized with neutral mean ({neutral_embs.shape[0]} samples).")
+                            else:
+                                print("[INIT] No neutral samples in this batch. Skipping reinit.")
+                                
+                    init_flag = False
                     # Cal Loss
                     losses = Loss(batch, output, step=step) # To do Step
                     total_loss = losses[0]
@@ -145,36 +163,31 @@ def train(rank, args, configs, batch_size, num_gpus):
                 optimizer.zero_grad()
 
                 #### Update neu_base (EMA, x0) ####
-                # EMA neutral anchor update
                 if hasattr(model, "module"):
                     fs2 = model.module
                 else:
                     fs2 = model
 
-                alpha = 1e-3
                 emotions = batch[3]  # (B,)
-                orig_style_ref_embs = output[-2]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs                    
-                neu_emb = output[-1]              # fastspeech2.forward 반환 순서상 neu_emb
+                orig_style_ref_embs = output[-2]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs
 
-                neutral_mask = (emotions == fs2.neutral_id)
-                neutral_mask = neutral_mask.bool()  # ← 추가
+                neutral_mask = (emotions == fs2.neutral_id).bool()
 
                 if neutral_mask.any():
                     rvq_mean = orig_style_ref_embs[neutral_mask].mean(dim=0, keepdim=True)
                     rvq_mean = rvq_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype)
-                    
+
+                    alpha0 = 1e-2                 # 기본 이동 평균 계수
+                    alpha = alpha0 / (step ** 0.5)  # step에 따라 점점 작아지게 (안정적 수렴)
+
                     with torch.no_grad():
-                        fs2.neu_base.data.mul_(1 - alpha).add_(alpha * rvq_mean)
-
-
-
-
+                        fs2.neu_base.mul_(1.0 - alpha).add_(alpha * rvq_mean)
 
                 if rank == 0:
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                         message1 = "Step {}/{}, ".format(step, total_step)
-                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}, flow_loss: {:.4f}, neu_l2_loss: {:.4f}".format( 
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}, flow_loss: {:.4f}, neu_align_loss: {:.4f}".format( 
                             ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
                             *losses_
                         )
@@ -321,7 +334,6 @@ def train(rank, args, configs, batch_size, num_gpus):
             model.style_extractor.vq_layers[0].greedy_restart()
         else:
             model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
-        
         if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
             model.style_extractor.vq_layers[1].greedy_restart()
         else:
@@ -331,6 +343,8 @@ def train(rank, args, configs, batch_size, num_gpus):
             model.style_extractor.vq_layers[2].greedy_restart()
         else:
             model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
+
+
 
         torch.cuda.empty_cache()
 
