@@ -1,7 +1,7 @@
 import argparse
 
 from utils.tools import get_configs_of
-from preprocessor import ljspeech, vctk, kss, icassp_2024
+from preprocessor import ljspeech, vctk, kss, icassp_2024, esd
 
 
 def main(config):
@@ -13,6 +13,8 @@ def main(config):
         kss.prepare_align(config)
     if "icassp_2024" in config["dataset"]:
         icassp_2024.prepare_align(config)
+    if "esd" in config["dataset"]:
+        esd.prepare_align(config)   
 
 
 if __name__ == "__main__":
