@@ -110,7 +110,7 @@ def log(
         logger.add_scalar("Loss/style_loss", losses[6], step) 
         logger.add_scalar("Loss/guide_loss", losses[7], step)
         logger.add_scalar("Loss/vq_loss", losses[8], step)
-        logger.add_scalar("Loss/cls_loss(indices)", losses[9], step)
+        # logger.add_scalar("Loss/cls_loss(indices)", losses[9], step)
 
     if fig is not None:
         logger.add_figure(tag, fig)
@@ -186,7 +186,7 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
         _,
         _,
         _,
-        _
+        # _
     ) = test_output
 
     basename = ids[0]

@@ -44,26 +44,26 @@ class Dataset(Dataset):
             "mel",
             "{}-mel-{}.npy".format(speaker, basename),
         )
-        mel = np.load(mel_path)
+        mel = np.load(mel_path).astype(np.float32)
         pitch_path = os.path.join(
             self.preprocessed_path,
             "pitch",
             "{}-pitch-{}.npy".format(speaker, basename),
         )
-        pitch = np.load(pitch_path)
+        pitch = np.load(pitch_path).astype(np.float32)
         energy_path = os.path.join(
             self.preprocessed_path,
             "energy",
             "{}-energy-{}.npy".format(speaker, basename),
         )
-        energy = np.load(energy_path)
+        energy = np.load(energy_path).astype(np.float32)
         duration_path = os.path.join(
             self.preprocessed_path,
             "duration",
             "{}-duration-{}.npy".format(speaker, basename),
         )
-        duration = np.load(duration_path)
-
+        duration = np.load(duration_path).astype(np.float32)
+        
         sample = {
             "id": basename,
             "speaker": speaker_id,
@@ -89,6 +89,12 @@ class Dataset(Dataset):
             raw_text = []
             for line in f.readlines():
                 n, s, e, t, r = line.strip("\n").split("|")
+
+                # ⚠️ 빈 phoneme 혹은 text 필터링
+                if len(t.strip()) == 0 or t.strip() == "{}" or len(r.strip()) == 0:
+                    print("[WARNING] Empty text or phoneme found in {}. Skipped.".format(n))
+                    continue
+                    
                 name.append(n)
                 speaker.append(s)
                 emotion.append(e)

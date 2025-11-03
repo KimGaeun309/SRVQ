@@ -68,7 +68,8 @@ def _arpabet_to_sequence(text, _language, _symbol_to_id):
     if _language == "kr":
         return _symbols_to_sequence([s for s in text.split()], _symbol_to_id)
     # For English: prepend '@' to ARPAbet symbols
-    return _symbols_to_sequence(["@" + s for s in text.split()], _symbol_to_id)
+    # NO. already done. no '@' needed for ESD dataset
+    return _symbols_to_sequence([s for s in text.split()], _symbol_to_id)
 
 
 def _should_keep_symbol(s, _symbol_to_id):

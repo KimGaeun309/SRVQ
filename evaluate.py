@@ -52,7 +52,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
 
             with torch.no_grad():
                 # Forward
-                output = model(*(batch[2:]), step=step, inference=False,  pitch_mel=pitch_mel, energy_mel=energy_mel,) # To do Step
+                output = model(*(batch[2:]), step=step, inference=False) # To do Step
 
                 # Cal Loss
                 losses = Loss(batch, output, step=step)
@@ -75,7 +75,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
             loss_means.append(loss_sum / len(dataset))
             loss_means_.append(loss_sum / len(dataset))
 
-    message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style Loss: {:.4f}, guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}".format( 
+    message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style Loss: {:.4f}, guided_loss: {:.4f}, vq_loss: {:.4f}".format( 
         *([step] + [l for l in loss_means_])
     )
 

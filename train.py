@@ -1,7 +1,6 @@
 import os
 import argparse
 
-import librosa
 import torch
 import numpy as np
 import torch.nn as nn
@@ -11,8 +10,6 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader
-
-from utils.tools import pad_1D, pad_2D
 
 from tqdm import tqdm
 
@@ -45,7 +42,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     loader = DataLoader(
         dataset,
         batch_size=batch_size * group_size,
-        shuffle=True,
+        shuffle=False,
         sampler=data_sampler,
         collate_fn=dataset.collate_fn,
     )
@@ -88,7 +85,6 @@ def train(rank, args, configs, batch_size, num_gpus):
         outer_bar.update()
 
     train = True
-    init_flag = True
     model.train()
     while train:
         if rank == 0:
@@ -100,27 +96,10 @@ def train(rank, args, configs, batch_size, num_gpus):
                 break
             for batch in batchs:
                 batch = to_device(batch, device)
-                
-                basenames = batch[0]
-                
-                pitch_mel, energy_mel = [], []
-
-                for basename in basenames:
-                    pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
-                    energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{basename}_energy.npy"
-                    pitch_mel.append(np.load(pitch_path).T)
-                    energy_mel.append(np.load(energy_path).T)
-                
-                pitch_mel = pad_2D(pitch_mel)
-                pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
-                energy_mel = pad_2D(energy_mel)
-                energy_mel = torch.from_numpy(energy_mel).to('cuda')
-                
 
                 with amp.autocast(args.use_amp):
                     # Forward
-                    output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag) # To do Step
-                    init_flag = False
+                    output = model(*(batch[2:]), step=step, inference=False) # To do Step
 
                     # Cal Loss
                     losses = Loss(batch, output, step=step) # To do Step
@@ -144,8 +123,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                         message1 = "Step {}/{}, ".format(step, total_step)
-                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}".format( 
-                            ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}".format(
                             *losses_
                         )
 
@@ -195,25 +173,6 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                         model.train()
 
-                        if losses[9].mean() > 0.4:
-                            init_flag = True   
-
-                        # if epoch < 5:
-                        #     init_flag = True
-
-                        # if epoch < 5:
-                        #     model.style_extractor.vq_layer1.random_restart()
-                        #     model.style_extractor.vq_layer2.random_restart()
-                        #     model.style_extractor.vq_layer3.random_restart()
-                        
-                        # model.style_extractor.vq_layer1.reset_dead_codes_kmeans()
-                        # model.style_extractor.vq_layer2.reset_dead_codes_kmeans()
-                        # model.style_extractor.vq_layer3.reset_dead_codes_kmeans()
-                        # model.style_extractor.vq_layer1.reset_usage()
-                        # model.style_extractor.vq_layer2.reset_usage()
-                        # model.style_extractor.vq_layer3.reset_usage()
-                        
-
                     if step % save_step == 0:
                         torch.save(
                             {
@@ -236,108 +195,6 @@ def train(rank, args, configs, batch_size, num_gpus):
             if rank == 0:
                 inner_bar.update(1)
         epoch += 1
-        
-
-        # val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
-
-        # with open(val_path, encoding='utf-8') as f:
-        #     val_infos = [line.strip().split("|") for line in f]
-
-        # import json
-        # with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
-        #     emotion_map = json.load(f)
-
-        # val_basenames = []
-        # emotions = []
-        # styles = []
-        # z_mels = []
-        # z_pitchs = []
-        # z_energies = []
-
-        # for i in range(len(val_infos)):
-        #     if i % 25 != 0: continue
-        #     val_info = val_infos[i]
-        #     val_basenames.append(val_info[0])
-        #     emotions.append(emotion_map[val_info[2]])
-        
-        # for i in range(len(val_basenames)):
-        #     val_basename = val_basenames[i]
-        #     emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
-        #     mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{val_basename[:3]}-mel-{val_basename}.npy')
-        #     mel = torch.from_numpy(mel).float().to(device)
-        #     mel = mel.unsqueeze(0)
-
-        #     pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{val_basename}_pitch.npy"
-        #     energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{val_basename}_energy.npy"
-            
-        #     pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
-        #     energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
-            
-        #     # pitch_mel = pad_2D(pitch_mel)
-        #     # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
-        #     # energy_mel = pad_2D(energy_mel)print
-        #     # energy_mel = torch.from_numpy(energy_mel).to('cpu')
-
-        #     z_mel, z_pitch, z_energy, cls_loss = model.ref_enc(mel, emotion, pitch_mel, energy_mel)
-        #     style, _, _, codebooks = model.style_extractor(z_mel, z_pitch, z_energy, cls_loss)
-
-        #     z_mels.append(z_mel)
-        #     z_pitchs.append(z_pitch)
-        #     z_energies.append(z_energy)
-        #     styles.append(style)
-
-        # z_mels = torch.cat(z_mels, dim=0)
-        # z_pitchs = torch.cat(z_pitchs, dim=0)
-        # z_energies = torch.cat(z_energies, dim=0)
-        # styles = torch.cat(styles, dim=0)
-
-        
-        model.style_extractor.vq_layer1.random_restart()
-        model.style_extractor.vq_layer2.random_restart()
-        model.style_extractor.vq_layer3.random_restart()
-        
-        # if model.style_extractor.RVQ1.vq_layers[0].dead_codes_count() < (7/2):
-        #     model.style_extractor.RVQ1.vq_layers[0].greedy_restart()
-        # else:
-        #     model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
-
-        # if model.style_extractor.RVQ1.vq_layers[1].dead_codes_count() < (7/2):
-        #     model.style_extractor.RVQ1.vq_layers[1].greedy_restart()
-        # else:
-        #     model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_pitchs)
-        
-        # if model.style_extractor.RVQ2.vq_layers[0].dead_codes_count() < (7/2):
-        #     model.style_extractor.RVQ2.vq_layers[0].greedy_restart()
-        # else:
-        #     model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_energies)
-
-        # if model.style_extractor.RVQ2.vq_layers[1].dead_codes_count() < (7/2):
-        #     model.style_extractor.RVQ2.vq_layers[1].greedy_restart()
-        # else:
-        #     model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
-
-        # if model.style_extractor.RVQ3.vq_layers[0].dead_codes_count() < (7/2):
-        #     model.style_extractor.RVQ3.vq_layers[0].greedy_restart()
-        # else:
-        #     model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
-
-        # if model.style_extractor.RVQ3.vq_layers[1].dead_codes_count() < (7/2):
-        #     model.style_extractor.RVQ3.vq_layers[1].greedy_restart()
-        # else:
-        #     model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
-
-
-        # model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
-        # model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_pitchs)
-        # model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_energies)
-
-        # model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
-        # model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
-        # model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
-        
-        
-        
-
 
 
 if __name__ == "__main__":

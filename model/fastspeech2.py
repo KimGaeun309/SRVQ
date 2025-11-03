@@ -7,12 +7,11 @@ import torch.nn.functional as F
 
 from .text2style_aligner import Text2Style_Aligner
 from .style_predictor import StylePredictor, LinearNorm
-from .transformers.transformer import Encoder, Decoder, MelDecoder, LightMelDecoder
+from .transformers.transformer import Encoder, Decoder, MelDecoder
 from .transformers.layers import PostNet
 from .modules import VarianceAdaptor, SinusoidalPositionalEmbedding
 from utils.tools import get_mask_from_lengths
 from text.symbols import symbols
-# from .residual_vq_gaeun import ReferenceEncoderSRVQ3, SRVQ3WithNeutralization # 수정
 from .residual_vq import ResidualVQ
 
 from .gst.style_encoder import StyleEncoder, GST_VQ
@@ -29,8 +28,7 @@ class FastSpeech2(nn.Module):
         if model_config["residual_vq"]["num_rvq"] == 3:
             self.decoder = MelDecoder(model_config) # vq3
         else:
-            # self.decoder = Decoder(model_config) # vq2, vq4
-            pass
+            self.decoder = Decoder(model_config) # vq2, vq4
         self.mel_linear = nn.Linear(
             model_config["transformer"]["decoder_hidden"],
             preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
@@ -64,6 +62,8 @@ class FastSpeech2(nn.Module):
                 n_emotion,
                 model_config["transformer"]["encoder_hidden"],
             )
+
+        print("n_emotion:", n_emotion)
         # GST
         if model_config["gst"]["use_gst"]:
             self.gst = StyleEncoder(
@@ -96,9 +96,6 @@ class FastSpeech2(nn.Module):
             )
 
         # Style module
-        # self.ref_enc = ReferenceEncoderSRVQ3(
-        #     e_dim=model_config["residual_vq"]["vq_hidden"],
-        # )
         self.style_extractor = ResidualVQ(
             idim=model_config["residual_vq"]["n_mel_channels"],
             conv_layers=model_config["residual_vq"]["rvq_conv_layers"],
@@ -111,7 +108,6 @@ class FastSpeech2(nn.Module):
             e_dim=model_config["residual_vq"]["vq_hidden"],
             num_vq=model_config["residual_vq"]["num_rvq"],
         )
-
         self.style_extract_fc = LinearNorm(
             model_config["residual_vq"]["vq_hidden"]*model_config["residual_vq"]["num_rvq"],
             model_config["residual_vq"]["vq_hidden"]
@@ -160,10 +156,6 @@ class FastSpeech2(nn.Module):
         d_control=1.0,
         step=None,
         inference=False,
-        pitch_mel=None,
-        energy_mel=None,
-        init_flag=False,
-        style_vector=None,
     ):
         
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
@@ -210,44 +202,23 @@ class FastSpeech2(nn.Module):
 
             if self.model_config["gst"]["use_gst"]:
                 ref_embs = self.gst(mels)
-                style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
+                style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs)
             else:
-                
-                # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
-                # z_mel, z_pitch, z_energy, cls_loss = self.ref_enc(mels, emotions=emotions, p_mel=pitch_mel, e_mel=energy_mel)
-                # if init_flag:
-                #     # kmeans_init !!!!
-                #     self.style_extractor.RVQ1.vq_layers[0].init_codebook_kmeans(z_mel)
-                #     self.style_extractor.RVQ2.vq_layers[0].init_codebook_kmeans(z_pitch)
-                #     self.style_extractor.RVQ3.vq_layers[0].init_codebook_kmeans(z_energy)
-
                 style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels) 
-                # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
-                
 
-                # if init_flag:
-                #     self.style_extractor.RVQ1.vq_layers[1].init_codebook_kmeans(z_mel - style_ref_embs[:, :128])
-                #     self.style_extractor.RVQ2.vq_layers[1].init_codebook_kmeans(z_pitch - style_ref_embs[:, 256:384])
-                #     self.style_extractor.RVQ3.vq_layers[1].init_codebook_kmeans(z_energy - style_ref_embs[:, 512:640])
-
-            # style_ref_embs shape : [16, 256*3]   
-
-            orig_style_ref_embs = style_ref_embs
+            # style_ref_embs shape : [16, 256*3]
 
             style_ref_embs = self.style_extract_fc(style_ref_embs) 
             # self.style_extract_fc : 256*3 -> 256 Linear Layer
 
             # output shape : [16, 86, 256] / style_ref_embs shape : [16, 256]
-
             output = output + style_ref_embs.unsqueeze(1)
 
             positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
             prosody_embedding = style_ref_embs.unsqueeze(1) + positions
 
         else:
-            
-
-            style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
+            style_ref_embs, vq_loss, min_encoding_indices = None, None, None
             style_pred_embs = self.style_predictor(phn_style_emb.transpose(0, 1))
             if self.model_config["residual_vq"]["num_rvq"] == 4:
                 style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
@@ -257,18 +228,7 @@ class FastSpeech2(nn.Module):
                 codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]] # vq3
             elif self.model_config["residual_vq"]["num_rvq"] == 2:
                 style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
-
-            
             style_pred_embs = self.style_pred_fc(style_pred_embs)
-
-            if style_vector is not None:
-                print("style vector!")
-                codebook = torch.split(style_vector, 256, dim=1)  # vq3 기준
-                codebooks = [codebook[0], codebook[1], codebook[2], codebook[0] + codebook[1] + codebook[2]]
-
-                orig_style_ref_embs = style_vector
-                style_pred_embs = self.style_extract_fc(style_vector)
-                style_ref_embs = style_pred_embs
 
             output = output + style_pred_embs.unsqueeze(1)
             positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])
@@ -336,6 +296,5 @@ class FastSpeech2(nn.Module):
             style_pred_embs,
             guided_loss,
             vq_loss,
-            min_encoding_indices,
-            orig_style_ref_embs, # Edit!
+            min_encoding_indices
         )
