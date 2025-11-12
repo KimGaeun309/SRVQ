@@ -260,7 +260,7 @@ class FastSpeech2(nn.Module):
                 if init_flag:
                     # kmeans_init !!!!
                     self.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs)
-
+                    cls_loss = None
                 style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, cls_loss) 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
 

@@ -609,7 +609,10 @@ class ResidualVQ_kmeans(torch.nn.Module):
             indices_list.append(indices)
 
         # 모든 단계의 손실 합산
-        total_vq_loss = sum(vq_losses) + cls_loss
+        if cls_loss is None:
+            total_vq_loss = sum(vq_losses)
+        else:
+            total_vq_loss = sum(vq_losses) + cls_loss
 
         # 모든 단계의 quantized 코드를 concatenate
         final_quantized = torch.cat(quantized_codes, dim=1)
