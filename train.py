@@ -294,7 +294,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     for batch in batchs:
                         batch = to_device(batch, device)
                         
-                        mel = batch[2]
+                        mel = batch[7]
                         emotions = batch[3]
 
                         # === FAST PATH: ref_enc + RVQ only ===
@@ -314,15 +314,11 @@ def train(rank, args, configs, batch_size, num_gpus):
                 print("[INIT] Performing K-means initialization for RVQ codebooks...")
                 fs2 = model.module if hasattr(model, "module") else model
                 # ref_embs_all: [N, 768] = [N, 256*3]
-                # stage별 입력 분리
-                ref_1 = ref_embs_all[:, :256]
-                ref_2 = ref_embs_all[:, 256:512]
-                ref_3 = ref_embs_all[:, 512:768]
-
+                
                 # RVQ 3단계 초기화
-                fs2.style_extractor.vq_layers[0].init_codebook_kmeans(ref_1)
-                fs2.style_extractor.vq_layers[1].init_codebook_kmeans(ref_2 - ref_1)
-                fs2.style_extractor.vq_layers[2].init_codebook_kmeans(ref_3 - ref_2)
+                fs2.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs_all)
+                fs2.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs_all - styles_all[:, :256])
+                fs2.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs_all - styles_all[:, :256] - styles_all[:, 256:512])
 
 
         if  did_x0_init:
@@ -398,7 +394,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     for batch in batchs:
                         batch = to_device(batch, device)
 
-                        mel = batch[2]
+                        mel = batch[7]
                         emotions = batch[3]
 
                         # === FAST PATH: ref_enc + RVQ only ===
@@ -415,9 +411,12 @@ def train(rank, args, configs, batch_size, num_gpus):
                 torch.cuda.empty_cache()
 
                 # --- 3. x0 초기화 (RVQ output 평균 사용) ---
-                x0_mean = styles_all.mean(dim=0, keepdim=True)
+                neutral_mask = (emotions_all == fs2.neutral_id)
+                neutral_styles = styles_all[neutral_mask]
+
+                x0_mean = neutral_styles.mean(dim=0, keepdim=True)
                 fs2.neu_base.data.copy_(x0_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype))
-                print(f"[INIT] x0 (neu_base) initialized with global RVQ mean ({x0_mean.shape}).")
+                print(f"[INIT] x0 (neu_base) initialized with neutral RVQ mean ({x0_mean.shape}).")
                 did_x0_init = True
 
 
