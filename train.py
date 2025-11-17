@@ -272,7 +272,7 @@ def train(rank, args, configs, batch_size, num_gpus):
             if rank == 0:
                 inner_bar.update(1)
         
-        if epoch == 1:
+        if epoch <= 2:
             print("[INIT] Warm-up finished. Running K-means initialization ...")
 
             with torch.no_grad():
@@ -374,7 +374,7 @@ def train(rank, args, configs, batch_size, num_gpus):
             else:
                 model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
-        if classifier_loss_small and (not did_x0_init) and epoch > 1:
+        if classifier_loss_small and (not did_x0_init) and epoch > 2:
             with torch.no_grad():
                 # --- 1. 전체 train 데이터셋에서 ref_emb / style vector 수집 ---
                 dataset_full = Dataset(

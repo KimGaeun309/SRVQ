@@ -35,7 +35,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
                 
             basenames = batch[0]
             
-            pitch_mel, energy_mel = [], []
+            # pitch_mel, energy_mel = [], []
 
             # for basename in basenames:
             #     pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
@@ -52,7 +52,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
 
             with torch.no_grad():
                 # Forward
-                output = model(*(batch[2:]), step=step, inference=False,  pitch_mel=pitch_mel, energy_mel=energy_mel,) # To do Step
+                output = model(*(batch[2:]), step=step, inference=False) # To do Step
 
                 # Cal Loss
                 losses = Loss(batch, output, step=step)
