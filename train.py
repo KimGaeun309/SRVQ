@@ -49,6 +49,7 @@ def train(rank, args, configs, batch_size, num_gpus):
         dataset,
         batch_size=batch_size * group_size,
         shuffle=True,
+        num_workers=os.cpu_count(),
         sampler=data_sampler,
         collate_fn=dataset.collate_fn,
     )
@@ -92,9 +93,28 @@ def train(rank, args, configs, batch_size, num_gpus):
         outer_bar.update()
 
     train = True
-    init_flag = True
+    did_x0_init = False
+    classifier_loss_small = False
     model.train()
     while train:
+        # === NEW: style predictor freeze/unfreeze ===
+        if not did_x0_init:
+            # freeze predictor
+            if hasattr(model, "module"):
+                for p in model.module.style_predictor.parameters():
+                    p.requires_grad = False
+            else:
+                for p in model.style_predictor.parameters():
+                    p.requires_grad = False
+        else:
+            # unfreeze predictor
+            if hasattr(model, "module"):
+                for p in model.module.style_predictor.parameters():
+                    p.requires_grad = True
+            else:
+                for p in model.style_predictor.parameters():
+                    p.requires_grad = True
+        # ============================================
         if rank == 0:
             inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
         if num_gpus > 1:
@@ -107,7 +127,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 
                 basenames = batch[0]
                 
-                pitch_mel, energy_mel = [], []
+                # pitch_mel, energy_mel = [], []
 
                 # for basename in basenames:
                     # pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
@@ -124,53 +144,17 @@ def train(rank, args, configs, batch_size, num_gpus):
                     fs2 = model.module
                 else:
                     fs2 = model
-
-                # 첫 1 epoch 동안 style predictor freeze
-                if init_flag:
-                    for param in fs2.style_predictor.parameters():
-                        param.requires_grad = False
-                else:
-                    for param in fs2.style_predictor.parameters():
-                        param.requires_grad = True
                 
 
                 with amp.autocast(args.use_amp):
                     # Forward
-                    output = model(*(batch[2:]), step=step, inference=False, pitch_mel=pitch_mel, energy_mel=energy_mel,  init_flag=init_flag) # To do Step
-
-                    # 1 에폭 끝났을 때만 딱 한번 x0 초기화 수행.
-                    # if init_flag:
-                    #     ### reinitialize x0 with neutral style vector mean
-                    #     if hasattr(model, "module"):
-                    #         fs2 = model.module
-                    #     else:
-                    #         fs2 = model
-                        
-                    #     with torch.no_grad():
-                    #         emotions = batch[3]                      # (B,)
-                    #         ref_embs = output[-2]                    # (B, D)  style extractor output
-                    #         neutral_mask = (emotions == fs2.neutral_id).bool()
-
-                    #     if neutral_mask.any():
-                    #         neutral_embs = ref_embs[neutral_mask]  # (N_neu, D)
-                    #         if neutral_embs.shape[0] < 4:
-                    #             print(f"[INIT] Too few neutral samples ({neutral_embs.shape[0]}), skipping reinit.")
-                    #             continue
-
-                    #         # 거리 기반 mode: 각 embedding이 얼마나 자주 근처에서 등장했는가
-                    #         with torch.no_grad():
-                    #             dist = torch.cdist(neutral_embs, neutral_embs, p=2)  # (N_neu, N_neu)
-                    #             density = (-dist).exp().sum(dim=1)                   # local density ≈ 빈도 유사도
-                    #             idx = torch.argmax(density)
-                    #             neu_repr = neutral_embs[idx:idx+1]                   # [1, D]
-
-                    #             fs2.neu_base.data.copy_(neu_repr.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype))
-                    #             print(f"[INIT] neu_base reinitialized with most frequent-like neutral vector (idx {idx}).")
-
-                    # init_flag = False
+                    output = model(*(batch[2:]), step=step, inference=False) # To do Step
 
                     # Cal Loss
                     losses = Loss(batch, output, step=step) # To do Step
+                    classifier_loss_val = losses[9].item()
+                    if classifier_loss_val < 0.3:
+                        classifier_loss_small = True
                     total_loss = losses[0]
                     total_loss = total_loss / grad_acc_step
 
@@ -187,26 +171,28 @@ def train(rank, args, configs, batch_size, num_gpus):
                 scaler.update()
                 optimizer.zero_grad()
 
-                #### Update neu_base (EMA, x0) ####
-                if hasattr(model, "module"):
-                    fs2 = model.module
-                else:
-                    fs2 = model
+                if did_x0_init:
 
-                emotions = batch[3]  # (B,)
-                orig_style_ref_embs = output[-2]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs
+                    #### Update neu_base (EMA, x0) ####
+                    if hasattr(model, "module"):
+                        fs2 = model.module
+                    else:
+                        fs2 = model
 
-                neutral_mask = (emotions == fs2.neutral_id).bool()
+                    emotions = batch[3]  # (B,)
+                    orig_style_ref_embs = output[-2]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs
 
-                if neutral_mask.any():
-                    rvq_mean = orig_style_ref_embs[neutral_mask].mean(dim=0, keepdim=True)
-                    rvq_mean = rvq_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype)
+                    neutral_mask = (emotions == fs2.neutral_id).bool()
 
-                    alpha0 = 1e-2                 # 기본 이동 평균 계수
-                    alpha = alpha0 / (step ** 0.5)  # step에 따라 점점 작아지게 (안정적 수렴)
+                    if neutral_mask.any():
+                        rvq_mean = orig_style_ref_embs[neutral_mask].mean(dim=0, keepdim=True)
+                        rvq_mean = rvq_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype)
 
-                    with torch.no_grad():
-                        fs2.neu_base.mul_(1.0 - alpha).add_(alpha * rvq_mean)
+                        alpha0 = 1e-2                 # 기본 이동 평균 계수
+                        alpha = alpha0 / (step ** 0.5)  # step에 따라 점점 작아지게 (안정적 수렴)
+
+                        with torch.no_grad():
+                            fs2.neu_base.mul_(1.0 - alpha).add_(alpha * rvq_mean)
 
                 if rank == 0:
                     if step % log_step == 0:
@@ -264,25 +250,6 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                         model.train()
 
-                        # if epoch == 1:
-                        #     init_flag = True   
-
-                        # if epoch < 5:
-                        #     init_flag = True
-
-                        # if epoch < 5:
-                        #     model.style_extractor.vq_layer1.random_restart()
-                        #     model.style_extractor.vq_layer2.random_restart()
-                        #     model.style_extractor.vq_layer3.random_restart()
-                        
-                        # model.style_extractor.vq_layer1.reset_dead_codes_kmeans()
-                        # model.style_extractor.vq_layer2.reset_dead_codes_kmeans()
-                        # model.style_extractor.vq_layer3.reset_dead_codes_kmeans()
-                        # model.style_extractor.vq_layer1.reset_usage()
-                        # model.style_extractor.vq_layer2.reset_usage()
-                        # model.style_extractor.vq_layer3.reset_usage()
-                        
-
                     if step % save_step == 0:
                         torch.save(
                             {
@@ -306,7 +273,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 inner_bar.update(1)
         
         if epoch == 1:
-            print("[INIT] Warm-up finished. Running K-means initialization and x0 setup...")
+            print("[INIT] Warm-up finished. Running K-means initialization ...")
 
             with torch.no_grad():
                 # --- 1. 전체 train 데이터셋에서 ref_emb / style vector 수집 ---
@@ -317,6 +284,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     dataset_full,
                     batch_size=batch_size,
                     shuffle=False,
+                    num_workers=os.cpu_count(),
                     collate_fn=dataset_full.collate_fn,
                 )
 
@@ -325,10 +293,14 @@ def train(rank, args, configs, batch_size, num_gpus):
                 for batchs in tqdm(loader_full, desc="[INIT] Extracting ref_embs for K-means"):
                     for batch in batchs:
                         batch = to_device(batch, device)
-                        output = model(*(batch[2:]), step=step, inference=False, init_flag=False)
+                        
+                        mel = batch[2]
                         emotions = batch[3]
-                        ref_emb = output[-2]      # reference encoder output (RVQ input)
-                        style = output[-1]        # RVQ output s=[s1;s2;s3]
+
+                        # === FAST PATH: ref_enc + RVQ only ===
+                        ref_emb, cls_loss = model.ref_enc(mel, emotions)
+                        style, vq_loss, min_idx, codebooks = model.style_extractor(ref_emb, cls_loss)
+
                         ref_embs_all.append(ref_emb)
                         styles_all.append(style)
                         emotions_all.append(emotions)
@@ -341,102 +313,120 @@ def train(rank, args, configs, batch_size, num_gpus):
                 # --- 2. RVQ K-means initialization ---
                 print("[INIT] Performing K-means initialization for RVQ codebooks...")
                 fs2 = model.module if hasattr(model, "module") else model
-                fs2.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs_all)
-                fs2.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs_all - styles_all[:, :256])
-                fs2.style_extractor.vq_layers[2].init_codebook_kmeans(
-                    ref_embs_all - styles_all[:, :256] - styles_all[:, 256:512]
+                # ref_embs_all: [N, 768] = [N, 256*3]
+                # stage별 입력 분리
+                ref_1 = ref_embs_all[:, :256]
+                ref_2 = ref_embs_all[:, 256:512]
+                ref_3 = ref_embs_all[:, 512:768]
+
+                # RVQ 3단계 초기화
+                fs2.style_extractor.vq_layers[0].init_codebook_kmeans(ref_1)
+                fs2.style_extractor.vq_layers[1].init_codebook_kmeans(ref_2 - ref_1)
+                fs2.style_extractor.vq_layers[2].init_codebook_kmeans(ref_3 - ref_2)
+
+
+        if  did_x0_init:
+            val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
+
+            with open(val_path, encoding='utf-8') as f:
+                val_infos = [line.strip().split("|") for line in f]
+
+            import json
+            with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
+                emotion_map = json.load(f)
+
+            val_basenames = []
+            emotions = []
+            styles = []
+            ref_embs = []
+
+            for i in range(len(val_infos)):
+                if i % 25 != 0: continue
+                val_info = val_infos[i]
+                val_basenames.append(val_info[0])
+                emotions.append(emotion_map[val_info[2]])
+            
+            for i in range(len(val_basenames)):
+                val_basename = val_basenames[i]
+                emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
+                mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{val_basename[:3]}-mel-{val_basename}.npy')
+                mel = torch.from_numpy(mel).float().to(device)
+                mel = mel.unsqueeze(0)
+
+                ref_emb, cls_loss = model.ref_enc(mel, emotion)
+                style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)
+
+                ref_embs.append(ref_emb)
+                styles.append(style)
+
+            ref_embs = torch.cat(ref_embs, dim=0)
+            styles = torch.cat(styles, dim=0)
+            
+            torch.cuda.empty_cache()
+
+            if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
+                model.style_extractor.vq_layers[0].greedy_restart()
+            else:
+                model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
+            if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
+                model.style_extractor.vq_layers[1].greedy_restart()
+            else:
+                model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
+            
+            if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
+                model.style_extractor.vq_layers[2].greedy_restart()
+            else:
+                model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
+
+        if classifier_loss_small and (not did_x0_init) and epoch > 1:
+            with torch.no_grad():
+                # --- 1. 전체 train 데이터셋에서 ref_emb / style vector 수집 ---
+                dataset_full = Dataset(
+                    "train.txt", preprocess_config, train_config, sort=False, drop_last=False
                 )
+                loader_full = DataLoader(
+                    dataset_full,
+                    batch_size=batch_size,
+                    shuffle=False,
+                    num_workers=os.cpu_count(),
+                    collate_fn=dataset_full.collate_fn,
+                )
+
+                ref_embs_all, styles_all, emotions_all = [], [], []
+
+                for batchs in tqdm(loader_full, desc="[INIT] Extracting ref_embs for x0 initialization"):
+                    for batch in batchs:
+                        batch = to_device(batch, device)
+
+                        mel = batch[2]
+                        emotions = batch[3]
+
+                        # === FAST PATH: ref_enc + RVQ only ===
+                        ref_emb, cls_loss = model.ref_enc(mel, emotions)
+                        style, vq_loss, min_idx, codebooks = model.style_extractor(ref_emb, cls_loss)
+
+                        ref_embs_all.append(ref_emb)
+                        styles_all.append(style)
+                        emotions_all.append(emotions)
+
+                ref_embs_all = torch.cat(ref_embs_all, dim=0)
+                styles_all = torch.cat(styles_all, dim=0)
+                emotions_all = torch.cat(emotions_all, dim=0)
+                torch.cuda.empty_cache()
 
                 # --- 3. x0 초기화 (RVQ output 평균 사용) ---
                 x0_mean = styles_all.mean(dim=0, keepdim=True)
                 fs2.neu_base.data.copy_(x0_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype))
                 print(f"[INIT] x0 (neu_base) initialized with global RVQ mean ({x0_mean.shape}).")
-
-            init_flag = False  # 이후부터 style predictor unfreeze
+                did_x0_init = True
 
 
         epoch += 1
 
-        if epoch <= 2:
-            continue
-
-        val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
-
-        with open(val_path, encoding='utf-8') as f:
-            val_infos = [line.strip().split("|") for line in f]
-
-        import json
-        with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
-            emotion_map = json.load(f)
-
-        val_basenames = []
-        emotions = []
-        styles = []
-        ref_embs = []
-
-        for i in range(len(val_infos)):
-            if i % 25 != 0: continue
-            val_info = val_infos[i]
-            val_basenames.append(val_info[0])
-            emotions.append(emotion_map[val_info[2]])
-        
-        for i in range(len(val_basenames)):
-            val_basename = val_basenames[i]
-            emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
-            mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{val_basename[:3]}-mel-{val_basename}.npy')
-            mel = torch.from_numpy(mel).float().to(device)
-            mel = mel.unsqueeze(0)
-
-            # pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{val_basename}_pitch.npy"
-            # energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{val_basename}_energy.npy"
-            
-            # pitch_mel = torch.from_numpy(np.load(pitch_path).T).to(device).unsqueeze(0)
-            # energy_mel = torch.from_numpy(np.load(energy_path).T).to(device).unsqueeze(0)
-            
-            # pitch_mel = pad_2D(pitch_mel)
-            # pitch_mel = torch.from_numpy(pitch_mel).to('cpu')
-            # energy_mel = pad_2D(energy_mel)print
-            # energy_mel = torch.from_numpy(energy_mel).to('cpu')
-
-            ref_emb, cls_loss = model.ref_enc(mel, emotion)
-            style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)
-
-            ref_embs.append(ref_emb)
-            styles.append(style)
-
-        ref_embs = torch.cat(ref_embs, dim=0)
-        styles = torch.cat(styles, dim=0)
-        
-        torch.cuda.empty_cache()
-
-        if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[0].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
-        if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[1].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
-        
-        if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
-            model.style_extractor.vq_layers[2].greedy_restart()
-        else:
-            model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
 
 
         torch.cuda.empty_cache()
-
-        # model.style_extractor.RVQ1.vq_layers[0].reset_dead_codes_kmeans(z_mels)
-        # model.style_extractor.RVQ2.vq_layers[0].reset_dead_codes_kmeans(z_pitchs)
-        # model.style_extractor.RVQ3.vq_layers[0].reset_dead_codes_kmeans(z_energies)
-
-        # model.style_extractor.RVQ1.vq_layers[1].reset_dead_codes_kmeans(z_mels - styles[:, :128])
-        # model.style_extractor.RVQ2.vq_layers[1].reset_dead_codes_kmeans(z_pitchs - styles[:, 256:384])
-        # model.style_extractor.RVQ3.vq_layers[1].reset_dead_codes_kmeans(z_energies - styles[:, 512:640])
-        
-        
-        
 
 
 

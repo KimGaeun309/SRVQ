@@ -201,9 +201,9 @@ class FastSpeech2(nn.Module):
         step=None,
         inference=False,
         intensity=1.0,
-        pitch_mel=None,
-        energy_mel=None,
-        init_flag=False,
+        # pitch_mel=None,
+        # energy_mel=None,
+        # init_flag=False,
     ):
         
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
@@ -257,10 +257,10 @@ class FastSpeech2(nn.Module):
                 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
                 ref_embs, cls_loss = self.ref_enc(mels, emotions=emotions)
-                if init_flag:
-                    # kmeans_init !!!!
-                    # self.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs)
-                    cls_loss = None
+                # if init_flag:
+                #     # kmeans_init !!!!
+                #     # self.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs)
+                #     cls_loss = None
                 style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, cls_loss) 
                 # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
 
