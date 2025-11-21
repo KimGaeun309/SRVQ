@@ -376,49 +376,62 @@ def train(rank, args, configs, batch_size, num_gpus):
 
         if classifier_loss_small and (not did_x0_init) and epoch > 2:
             with torch.no_grad():
-                # --- 1. 전체 train 데이터셋에서 ref_emb / style vector 수집 ---
-                dataset_full = Dataset(
-                    "train.txt", preprocess_config, train_config, sort=False, drop_last=False
-                )
-                loader_full = DataLoader(
-                    dataset_full,
-                    batch_size=batch_size,
-                    shuffle=False,
-                    num_workers=os.cpu_count(),
-                    collate_fn=dataset_full.collate_fn,
-                )
+                fs2 = model.module if hasattr(model, "module") else model
 
-                ref_embs_all, styles_all, emotions_all = [], [], []
+                # === 1. 전체 데이터를 돌며 neutral index를 stage별로 수집 ===
+                dataset_full = Dataset("train.txt", preprocess_config, train_config,
+                                    sort=False, drop_last=False)
+                loader_full = DataLoader(dataset_full, batch_size=batch_size,
+                                        shuffle=False, num_workers=os.cpu_count(),
+                                        collate_fn=dataset_full.collate_fn)
 
-                for batchs in tqdm(loader_full, desc="[INIT] Extracting ref_embs for x0 initialization"):
+                neutral_indices_stage = [[], [], []]   # stage1, stage2, stage3
+
+                for batchs in tqdm(loader_full, desc="[INIT] Collect neutral code indices"):
                     for batch in batchs:
                         batch = to_device(batch, device)
-
                         mel = batch[7]
                         emotions = batch[3]
 
-                        # === FAST PATH: ref_enc + RVQ only ===
-                        ref_emb, cls_loss = model.ref_enc(mel, emotions)
-                        style, vq_loss, min_idx, codebooks = model.style_extractor(ref_emb, cls_loss)
+                        ref_emb, cls_loss = fs2.ref_enc(mel, emotions)
+                        _, _, indices_list, codebooks_list = fs2.style_extractor(ref_emb, cls_loss)
+                        # indices_list = [ (B,1), (B,1), (B,1) ]
 
-                        ref_embs_all.append(ref_emb)
-                        styles_all.append(style)
-                        emotions_all.append(emotions)
+                        neu_mask = (emotions == fs2.neutral_id)
+                        if neu_mask.any():
+                            for s in range(3):
+                                idx_tensor = indices_list[s][neu_mask]  # (k,1)
+                                for idx in idx_tensor:
+                                    neutral_indices_stage[s].append(int(idx.item()))
 
-                ref_embs_all = torch.cat(ref_embs_all, dim=0)
-                styles_all = torch.cat(styles_all, dim=0)
-                emotions_all = torch.cat(emotions_all, dim=0)
-                torch.cuda.empty_cache()
+                # === 2. stage별 most frequent index 구하기 ===
+                from collections import Counter
+                stage_mode_idx = []
+                for s in range(3):
+                    if len(neutral_indices_stage[s]) == 0:
+                        print(f"[INIT][WARN] stage {s+1}: no neutral codes found")
+                        stage_mode_idx.append(0)  # fallback
+                    else:
+                        c = Counter(neutral_indices_stage[s])
+                        stage_mode_idx.append(c.most_common(1)[0][0])
 
-                # --- 3. x0 초기화 (RVQ output 평균 사용) ---
-                neutral_mask = (emotions_all == fs2.neutral_id)
-                neutral_styles = styles_all[neutral_mask]
+                print("[INIT] mode indices:", stage_mode_idx)
 
-                x0_mean = neutral_styles.mean(dim=0, keepdim=True)
-                fs2.neu_base.data.copy_(x0_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype))
-                print(f"[INIT] x0 (neu_base) initialized with neutral RVQ mean ({x0_mean.shape}).")
+                # === 3. codebook에서 vector 가져와 concat ===
+                stage_vecs = []
+                for s in range(3):
+                    idx = stage_mode_idx[s]
+                    vec = fs2.style_extractor.vq_layers[s].embedding.weight[idx]  # (256,)
+                    stage_vecs.append(vec)
+
+                neutral_vec = torch.cat(stage_vecs, dim=0).unsqueeze(0)   # (1,768)
+
+                # === 4. neu_base에 복사 ===
+                fs2.neu_base.data.copy_(neutral_vec.to(fs2.neu_base.device,
+                                                    type=fs2.neu_base.dtype))
+
+                print(f"[INIT] x0(neu_base) initialized with mode neutral codebook vector.")
                 did_x0_init = True
-
 
         epoch += 1
 

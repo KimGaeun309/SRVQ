@@ -693,7 +693,7 @@ class ResidualVQ(torch.nn.Module):
         indices_list = [indices_1, indices_2, indices_3]
         codebooks = [z_q_out_1, z_q_out_2, z_q_out_3, z_q_out_1 + z_q_out_2 + z_q_out_3]
 
-        return z_q_out, vq_loss, indices_1, codebooks
+        return z_q_out, vq_loss, indices_list, codebooks
 
 
 # class ResidualVQ2(torch.nn.Module):
