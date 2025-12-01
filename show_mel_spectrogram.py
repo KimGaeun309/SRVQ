@@ -1,136 +1,116 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import librosa.display
-import torch
-from scipy.io import wavfile
 import os
+import json
+import yaml
+import argparse
+import numpy as np
+from matplotlib import pyplot as plt
 
-from utils.model import get_vocoder
-from utils.tools import get_configs_of
+
+def expand(values, durations):
+    out = []
+    for v, d in zip(values, durations):
+        out += [v] * max(0, int(d))
+    return np.array(out)
 
 
-def plot_mel(data, titles=None):
-    fig, axes = plt.subplots(len(data), 1, squeeze=False)
-    if titles is None:
-        titles = [None for _ in range(len(data))]
+def add_axis(fig, old_ax):
+    ax = fig.add_axes(old_ax.get_position(), anchor="W")
+    ax.set_facecolor("None")
+    return ax
 
-    for i in range(len(data)):
-        mel = data[i]
-        axes[i][0].imshow(mel, origin="lower")
-        axes[i][0].set_aspect(2.5, adjustable="box")
-        axes[i][0].set_ylim(0, mel.shape[0])
-        axes[i][0].set_title(titles[i], fontsize="medium")
-        axes[i][0].tick_params(labelsize="x-small", left=False, labelleft=False)
-        axes[i][0].set_anchor("W")
 
+def plot_mel_fastspeech2_style(mel, pitch, energy, stats, basename):
+    """Same visualization style as utils/tools.py in FastSpeech2"""
+    pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max = stats
+    pitch_min = pitch_min * pitch_std + pitch_mean
+    pitch_max = pitch_max * pitch_std + pitch_mean
+    pitch = pitch * pitch_std + pitch_mean
+
+    fig, ax = plt.subplots(figsize=(10, 3))
+    ax.imshow(mel, origin="lower")
+    ax.set_aspect(2.5, adjustable="box")
+    ax.set_ylim(0, mel.shape[0])
+    ax.set_title(basename, fontsize="medium")
+    ax.tick_params(labelsize="x-small", left=False, labelleft=False)
+    ax.set_anchor("W")
+
+    # pitch overlay
+    ax1 = add_axis(fig, ax)
+    ax1.plot(pitch, color="tomato")
+    ax1.set_xlim(0, mel.shape[1])
+    ax1.set_ylim(0, pitch_max)
+    ax1.set_ylabel("F0", color="tomato")
+    ax1.tick_params(labelsize="x-small", colors="tomato", bottom=False, labelbottom=False)
+
+    # energy overlay
+    ax2 = add_axis(fig, ax)
+    ax2.plot(energy, color="darkviolet")
+    ax2.set_xlim(0, mel.shape[1])
+    ax2.set_ylim(energy_min, energy_max)
+    ax2.set_ylabel("Energy", color="darkviolet")
+    ax2.yaxis.set_label_position("right")
+    ax2.tick_params(
+        labelsize="x-small",
+        colors="darkviolet",
+        bottom=False,
+        labelbottom=False,
+        left=False,
+        labelleft=False,
+        right=True,
+        labelright=True,
+    )
     return fig
 
-def vocoder_infer(mels, vocoder, model_config, preprocess_config, lengths=None):
-    name = model_config["vocoder"]["model"]
-    with torch.no_grad():
-        if name == "MelGAN":
-            wavs = vocoder.inverse(mels / np.log(10))
-        elif name == "HiFi-GAN":
-            wavs = vocoder(mels).squeeze(1)
 
-    wavs = (
-        wavs.cpu().numpy()
-        * preprocess_config["preprocessing"]["audio"]["max_wav_value"]
-    ).astype("int16")
-    wavs = [wav for wav in wavs]
+def main(basename, base_dir, cfg_path):
+    spk = basename.split("_")[0]
 
-    for i in range(len(mels)):
-        if lengths is not None:
-            wavs[i] = wavs[i][: lengths[i]]
+    # Load arrays
+    mel = np.load(f"{base_dir}/mel/{spk}-mel-{basename}.npy").T
+    pitch = np.load(f"{base_dir}/pitch/{spk}-pitch-{basename}.npy")
+    energy = np.load(f"{base_dir}/energy/{spk}-energy-{basename}.npy")
+    dur = np.load(f"{base_dir}/duration/{spk}-duration-{basename}.npy")
 
-    return wavs
+    # Configs
+    with open(cfg_path) as f:
+        cfg = yaml.safe_load(f)
+    p_feat = cfg["preprocessing"]["pitch"]["feature"]
+    e_feat = cfg["preprocessing"]["energy"]["feature"]
 
-"""
-mel_basename = "JCH_0003-mel-0003_G1A4E5S0C0_JCH_001396"
-# mel_basename = "CHY_0012-mel-0012_G1A2E4S0C0_CHY_000103"
-mel_basename = "CHY_0012-mel-0012_G1A2E4S0C0_CHY_000001"
-mel_basename = "CHY_0012-mel-0012_G1A2E4S0C0_CHY_000932"
-mel_basename = "CHY_0012-mel-0012_G1A2E4S0C0_CHY_000002"
-mel_basename = "JCH_0003-mel-0003_G1A4E1S0C0_JCH_00101"
-mel_basename = "JCH_0003-mel-0003_G1A4E1S0C0_JCH_00044"
-mel_basename = "CHY_0012-mel-0012_G1A2E6S0C0_CHY_000402"
-basename = mel_basename[13:]
-speaker  = mel_basename[:8]
-print("basename:", basename) 
-print("speaker:", speaker)
+    with open(f"{base_dir}/stats.json") as f:
+        stats = json.load(f)
+    stats_combined = stats["pitch"] + stats["energy"][:2]
 
+    # expand if phoneme-level
+    if p_feat == "phoneme_level":
+        pitch = expand(pitch, dur)
+    if e_feat == "phoneme_level":
+        energy = expand(energy, dur)
 
-# mel_basename = "JCH_0003-mel-0003_G1A4E5S0C0_JCH_00246"
-# 0003_G1A4E5S0C0_JCH_001396
+    # match lengths
+    T = mel.shape[1]
+    pitch = pitch[:T] if len(pitch) >= T else np.pad(pitch, (0, T - len(pitch)))
+    energy = energy[:T] if len(energy) >= T else np.pad(energy, (0, T - len(energy)))
 
+    # Plot identical to FS2
+    fig = plot_mel_fastspeech2_style(mel, pitch, energy, stats_combined, basename)
 
-# Load the mel spectrogram data
-mel_data = np.load('./preprocessed_data/emo_kr_22050/mel/{}.npy'.format(mel_basename))
-
-# mel_data = np.load('/home/gaeun/Documents/DL/Codes/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/output/result/icassp_2024/740000/0012_G1A2E6S0C0_CHY_000402.npy')
-# mel_basename = "0012_G1A2E6S0C0_CHY_000402_Synthesized"
-
-"""
-
-mel_data = np.load('/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_norm_wavs/pitch_norm/CHY/CHY_ang_000001.npy')
-
-mel_data = np.transpose(mel_data)
-
-fig = plot_mel([mel_data], ["CHY_ang_000001_p"])
-plt.savefig('./preprocessed_mels/{}.png'.format("CHY_ang_000001_p"), format='png')
-plt.close()
-
-print("mel_data shape", mel_data.shape)
+    save_dir = "./preprocessed_mels"
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{basename}.png")
+    plt.savefig(save_path, format="png", dpi=200)
+    plt.close(fig)
+    print(f"[SAVED] {save_path}")
 
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file", type=str, required=True,
+                        help="basename without extension, e.g. 0011_angry_0011_000353")
+    parser.add_argument("--base", type=str, default="./preprocessed_data/esd",
+                        help="base directory containing mel/pitch/energy/duration folders")
+    parser.add_argument("--config", type=str, default="./config/esd/preprocess.yaml",
+                        help="path to preprocess.yaml config")
+    args = parser.parse_args()
 
-# postnet_output shape torch.Size([1, 77, 80])s
-
-
-"""
-# Read Config
-preprocess_config, model_config, train_config = get_configs_of("icassp_2024")
-
-torch.manual_seed(train_config["seed"])
-if torch.cuda.is_available():
-    torch.cuda.manual_seed(train_config["seed"])
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
-print(f"Device of TTS: {device}")
-
-# Load vocoder
-vocoder = get_vocoder(model_config, device)
-
-mel_data = torch.from_numpy(mel_data).float().unsqueeze(0).to(device)
-
-
-print("mel_data shape", mel_data.shape)
-
-wav_data = vocoder_infer(
-    mel_data, vocoder, model_config, preprocess_config
-)
-
-sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
-wavfile.write('./preprocessed_mels/{}.wav'.format(mel_basename), sampling_rate, wav_data[0])
-
-lab_path = os.path.join("./raw_data/emo_kr_22050", speaker, "{}.lab".format(basename))
-
-print("lab path:", lab_path)
-
-with open(lab_path, 'r') as f:
-    print(f.readline())
-
-
-
-
-
-# # Create the plot
-# plt.figure()
-# librosa.display.specshow(mel_data)
-# plt.colorbar()
-
-# # Save the plot as a PNG file
-# plt.savefig('./preprocessed_mels/{}.png'.format(mel_basename))
-# plt.close()
-"""
+    main(args.file, args.base, args.config)

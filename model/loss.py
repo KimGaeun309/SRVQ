@@ -89,20 +89,40 @@ class FastSpeech2Loss(nn.Module):
         # Style loss
         style_loss = self.mae_loss(style_pred_embs, style_ref_embs) * 10 # lamda scale
         total_style_loss = style_loss + guided_loss
+    
+
+        
+
 
         # Clssifier
-        # emotions_pred = min_encoding_indices.float()
-        # emotions = inputs[3]
+        # emotions_pred = torch.softmax(min_encoding_indices.float(), dim=1)
+        emotions = inputs[3]
+        num_classes = 5
 
-        # if emotions.max() > 4 or min_encoding_indices.max() > 4:
-        #     print("emotions_pred.shape:", emotions_pred.shape)
-        #     print("emotions.min(), emotions.max():", emotions.min().item(), emotions.max().item())
-        #     print("min_encoding_indices.min(), min_encoding_indices.max():", min_encoding_indices.min().item(), min_encoding_indices.max().item())
+        # 1. one-hot hard assignment
+        onehot = F.one_hot(min_encoding_indices.squeeze(), num_classes).float()  # (B, num_classes)
 
-        # classifier_loss = self.criterion(emotions_pred, emotions)
+        # 2. soft version for gradient
+        soft = F.softmax(onehot / 1.0, dim=-1)  # dummy continuous proxy
+        # 또는 더 자연스럽게
+        # soft = onehot.clone() + 0.0  # shape 유지용
 
+        # 3. straight-through trick
+        # forward는 one-hot, backward는 soft
+        onehot_st = onehot + soft - soft.detach()
+
+        # 4. logit처럼 사용
+        # small linear projection to match logit space
+        logits = onehot_st @ torch.eye(num_classes, device=onehot.device)  # identity mapping
+        # (optionally add trainable weights)
+        # logits = self.classifier(onehot_st)
+
+        classifier_loss = self.criterion(logits, emotions)
+
+        # classifier_loss = self.criterion(min_encoding_indices.float(), emotions)
+        
         total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss # + classifier_loss
+            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + total_style_loss + vq_loss + classifier_loss
         )
 
         return (
@@ -115,5 +135,5 @@ class FastSpeech2Loss(nn.Module):
             style_loss,
             guided_loss,
             vq_loss,
-            # classifier_loss,
+            classifier_loss,
         )

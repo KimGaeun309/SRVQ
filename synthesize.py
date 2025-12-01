@@ -12,32 +12,12 @@ from pypinyin import pinyin, Style
 
 from utils.model import get_model, get_vocoder
 from utils.tools import get_configs_of, to_device, synth_samples
-from dataset import TextDataset, TextDatasetSingle
+from dataset import TextDataset
 from text import text_to_sequence
 from text.korean import tokenize, normalize_nonchar
 
 import time
 import json
-
-from g2pk import G2p
-from jamo import h2j
-from text import _clean_text
-
-def get_style_vector(emotion_weights_str, device):
-    """
-    emotion_weights_str 예시: "neu:0.7,ang:0.3"
-    """
-    emotion_weights = {
-        k.strip(): float(v)
-        for k, v in (item.split(":") for item in emotion_weights_str.split(","))
-    }
-    style_vectors = []
-    for emo, weight in emotion_weights.items():
-        vec = np.load(f"emotion_style_vectors_mode/{emo}_style.npy")  # (768,)
-        style_vectors.append(torch.from_numpy(vec).float() * weight)
-    style_vector = sum(style_vectors).unsqueeze(0).to(device)  # (1, 768)
-    return style_vector
-
 
 def read_lexicon(lex_path):
     lexicon = {}
@@ -50,8 +30,8 @@ def read_lexicon(lex_path):
                 lexicon[word.lower()] = phones
     return lexicon
 
-def preprocess_korean(text, cleaners):
-    # lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
+def preprocess_korean(text, preprocess_config):
+    lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
 
     phones = []
     words = filter(None, re.split(r"([,;.\-\?\!\s+])", text))
@@ -66,13 +46,13 @@ def preprocess_korean(text, cleaners):
 
     print("Raw Text Sequence: {}".format(text))
     print("Phoneme Sequence: {}".format(phones))
-    # sequence = np.array(
-    #     text_to_sequence(
-    #         phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
-    #     )
-    # )
+    sequence = np.array(
+        text_to_sequence(
+            phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
+        )
+    )
 
-    return phones
+    return np.array(sequence)
 
 
 def preprocess_english(text, preprocess_config):
@@ -121,21 +101,18 @@ def preprocess_mandarin(text, preprocess_config):
     phones = "{" + " ".join(phones) + "}"
     print("Raw Text Sequence: {}".format(text))
     print("Phoneme Sequence: {}".format(phones))
-    # sequence = np.array(
-    #     text_to_sequence(
-    #         phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
-    #     )
-    # )
+    sequence = np.array(
+        text_to_sequence(
+            phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
+        )
+    )
 
-    return phones
+    return np.array(sequence)
+
+
 def synthesize(device, model, args, configs, vocoder, batchs, control_values):
     preprocess_config, model_config, train_config = configs
     pitch_control, energy_control, duration_control = control_values
-
-    # 감정 가중합 벡터 생성
-    style_vector = None
-    if args.mode == "single":
-        style_vector = get_style_vector(args.emotion_weights, device)
 
     for batch in batchs:
         batch = to_device(batch, device)
@@ -147,7 +124,6 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
                 e_control=energy_control,
                 d_control=duration_control,
                 inference=True,
-                style_vector=style_vector,  # <== 여기에 style_vector 추가
             )
             synth_samples(
                 batch,
@@ -160,11 +136,10 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
             )
 
 
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--restore_step", type=str, required=True)
+    parser.add_argument("--restore_step", type=int, required=True)
     parser.add_argument(
         "--mode",
         type=str,
@@ -185,9 +160,9 @@ if __name__ == "__main__":
         help="raw text to synthesize, for single-sentence mode only",
     )
     parser.add_argument(
-        "--speaker",
-        type=str,
-        default="CHY",
+        "--speaker_id",
+        type=int,
+        default=0,
         help="speaker ID for multi-speaker synthesis, for single-sentence mode only",
     )
     parser.add_argument(
@@ -220,15 +195,6 @@ if __name__ == "__main__":
         default=1.0,
         help="control the speed of the whole utterance, larger value for slower speaking rate",
     )
-
-    parser.add_argument(
-    "--emotion_weights",
-    type=str,
-    default="neu:1.0",
-    help="comma-separated emotion weights, e.g., 'neu:0.7,ang:0.3'",
-)
-
-
     args = parser.parse_args()
 
     # Check source texts
@@ -236,7 +202,6 @@ if __name__ == "__main__":
         assert args.source is not None and args.text is None
     if args.mode == "single":
         assert args.source is None and args.text is not None 
-
 
     # Read Config
     preprocess_config, model_config, train_config = get_configs_of(args.dataset)
@@ -276,49 +241,38 @@ if __name__ == "__main__":
         ) as f:
             emotion_map = json.load(f)
 
-        raw_text = args.text
-        emotion = args.emotion
-        speaker = args.speaker
-
         cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
-        
+        from g2pk import G2p
+        from jamo import h2j
+        from text import _clean_text
 
         g2p = G2p()
         filters = '([.,!?])"'
-        cleaners = ["korean_cleaners"]
-        raw_text = re.sub(re.compile(filters), '', raw_text)
-        raw_text = _clean_text(raw_text, cleaners)
-        raw_text = h2j(g2p(raw_text))
+        text = re.sub(re.compile(filters), '', args.text)
+        text = _clean_text(text, cleaners)
+        text = h2j(g2p(text))
 
-        phone = preprocess_korean(raw_text, cleaners)
-        print("phone", phone)
+        print("after g2p", text)
 
-        dataset = TextDatasetSingle(preprocess_config, raw_text, phone, speaker, emotion)
+        ids = raw_texts = [args.text[:100]]
+        speakers = np.array([args.speaker_id])
+        emotion_id = emotion_map[args.emotion]
+        emotions = np.array([emotion_id])
 
-        batchs = DataLoader(
-            dataset,
-            batch_size=1,
-            collate_fn=dataset.collate_fn,
-        )
+        # if preprocess_config["preprocessing"]["text"]["language"] == "en":
+        #     texts = np.array([preprocess_english(args.text, preprocess_config)])
+        # elif preprocess_config["preprocessing"]["text"]["language"] == "zh":
+        #     texts = np.array([preprocess_mandarin(args.text, preprocess_config)])
+        # elif preprocess_config["preprocessing"]["text"]["language"] == "kr":
+        #     texts = np.array([preprocess_korean(args.text, preprocess_config)])
 
-
-        # ids = raw_texts = [args.text[:100]]
-        # speakers = np.array([args.speaker_id])
-        # emotion_id = emotion_map[args.emotion]
-        # emotions = np.array([emotion_id])
-
-        # phone = np.array(text_to_sequence(text, cleaners))
-
-        # print("phone", phone)
+        phone = np.array(text_to_sequence(text, cleaners))
         
-        # texts = np.array([phone])
-        # print("final", texts)
-        # print("size", texts.shape[1])
+        texts = np.array([phone])
+        print("final", texts)
 
-        # text_lens = np.array([len(texts[0])])
-
-        # print("text_lens")
-        # batchs = [(ids, raw_texts, speakers, emotions, texts, text_lens, max(text_lens))]
+        text_lens = np.array([len(texts[0])])
+        batchs = [(ids, raw_texts, speakers, emotions, texts, text_lens, max(text_lens))]
 
         # GST Reference Audio
         # if model_config["gst"]["use_gst"]:
@@ -337,4 +291,3 @@ if __name__ == "__main__":
     synthesize(device, model, args, configs, vocoder, batchs, control_values)
     end = time.time()
     print(f'Total_time: {end - start}')
-    # print(f'time per phoneme: {(end - start)/ texts.shape[1]}')

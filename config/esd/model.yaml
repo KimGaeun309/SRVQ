@@ -112,5 +112,5 @@ max_seq_len: 1000
 
 vocoder:
   model: "HiFi-GAN" # support 'HiFi-GAN', 'MelGAN'
-  speaker: "finetune" # support  'LJSpeech', 'universal', 'finetune', 'icassp_2024'
+  speaker: "universal" # support  'LJSpeech', 'universal', 'finetune', 'icassp_2024'
   
