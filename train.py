@@ -258,7 +258,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                             },
                             os.path.join(
                                 train_config["path"]["ckpt_path"],
-                                "{}.pth.tar".format(step),
+                                "{}_m.pth.tar".format(step),
                             ),
                         )
 
