@@ -352,7 +352,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 ref_emb, cls_loss = model.ref_enc(mel, emotion)
                 style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)
 
-                ref_embs.wappend(ref_emb)
+                ref_embs.append(ref_emb)
                 styles.append(style)
 
             ref_embs = torch.cat(ref_embs, dim=0)
