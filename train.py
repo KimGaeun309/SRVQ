@@ -374,7 +374,7 @@ def train(rank, args, configs, batch_size, num_gpus):
             else:
                 model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
-        if classifier_loss_small and (not did_x0_init) and epoch > 5:
+        if epoch == 3:
             with torch.no_grad():
                 fs2 = model.module if hasattr(model, "module") else model
 
