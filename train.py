@@ -180,7 +180,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                         fs2 = model
 
                     emotions = batch[3]  # (B,)
-                    orig_style_ref_embs = output[-2]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs
+                    orig_style_ref_embs = output[16]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs
 
                     neutral_mask = (emotions == fs2.neutral_id).bool()
 
@@ -272,11 +272,11 @@ def train(rank, args, configs, batch_size, num_gpus):
             if rank == 0:
                 inner_bar.update(1)
         
-        if epoch <= 2:
+        if epoch == 2:
             print("[INIT] Warm-up finished. Running K-means initialization ...")
 
             with torch.no_grad():
-                # --- 1. 전체 train 데이터셋에서 ref_emb / style vector 수집 ---
+                # --- 1. 전체 train 데이터셋에서 ref_emb / style vector 수집 ---               
                 dataset_full = Dataset(
                     "train.txt", preprocess_config, train_config, sort=False, drop_last=False
                 )
@@ -286,7 +286,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     shuffle=False,
                     num_workers=os.cpu_count(),
                     collate_fn=dataset_full.collate_fn,
-                )
+                )   
 
                 ref_embs_all, styles_all, emotions_all = [], [], []
 
@@ -352,13 +352,14 @@ def train(rank, args, configs, batch_size, num_gpus):
                 ref_emb, cls_loss = model.ref_enc(mel, emotion)
                 style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)
 
-                ref_embs.append(ref_emb)
+                ref_embs.wappend(ref_emb)
                 styles.append(style)
 
             ref_embs = torch.cat(ref_embs, dim=0)
             styles = torch.cat(styles, dim=0)
             
             torch.cuda.empty_cache()
+
 
             if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
                 model.style_extractor.vq_layers[0].greedy_restart()
@@ -368,13 +369,12 @@ def train(rank, args, configs, batch_size, num_gpus):
                 model.style_extractor.vq_layers[1].greedy_restart()
             else:
                 model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
-            
             if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
                 model.style_extractor.vq_layers[2].greedy_restart()
             else:
                 model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
-        if classifier_loss_small and (not did_x0_init) and epoch > 2:
+        if classifier_loss_small and (not did_x0_init) and epoch > 5:
             with torch.no_grad():
                 fs2 = model.module if hasattr(model, "module") else model
 
@@ -428,7 +428,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                 # === 4. neu_base에 복사 ===
                 fs2.neu_base.data.copy_(neutral_vec.to(fs2.neu_base.device,
-                                                    type=fs2.neu_base.dtype))
+                                                    dtype=fs2.neu_base.dtype))
 
                 print(f"[INIT] x0(neu_base) initialized with mode neutral codebook vector.")
                 did_x0_init = True
