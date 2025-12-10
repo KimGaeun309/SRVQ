@@ -4,11 +4,11 @@ dist_config:
   dist_url: "tcp://localhost:54321"
   world_size: 1
 path:
-  ckpt_path: "./dhs_output/ckpt/icassp_2024"
+  ckpt_path: "./output/ckpt/icassp_2024"
   log_path: "./output/log/icassp_2024"
   result_path: "./output/result/icassp_2024"
 optimizer:
-  batch_size: 32
+  batch_size: 64
   betas: [0.9, 0.98]
   eps: 0.000000001
   weight_decay: 0.0
@@ -21,5 +21,5 @@ step:
   total_step: 1500000
   log_step: 1000
   synth_step: 2000
-  val_step: 2000
-  save_step: 100000
+  val_step: 1000
+  save_step: 10000

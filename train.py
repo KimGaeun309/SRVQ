@@ -22,10 +22,27 @@ from model import FastSpeech2Loss
 from utils.model import get_model, get_vocoder, get_param_num
 from utils.tools import get_configs_of, to_device, log, synth_one_sample
 
-torch.backends.cudnn.benchmark = True
+import random
+import numpy as np
+import torch
+
+def set_all_seeds(seed=1234):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # 연산 재현성 강화 옵션(선택)
+    torch.backends.cudnn.deterministic = False
+    torch.backends.cudnn.benchmark = True
+
 
 def train(rank, args, configs, batch_size, num_gpus):
     preprocess_config, model_config, train_config = configs
+
+    set_all_seeds(train_config["seed"])
+
     if num_gpus > 1:
         init_process_group(
             backend=train_config["dist_config"]["dist_backend"],
@@ -152,9 +169,6 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                     # Cal Loss
                     losses = Loss(batch, output, step=step) # To do Step
-                    classifier_loss_val = losses[9].item()
-                    if classifier_loss_val < 0.3:
-                        classifier_loss_small = True
                     total_loss = losses[0]
                     total_loss = total_loss / grad_acc_step
 
@@ -166,33 +180,34 @@ def train(rank, args, configs, batch_size, num_gpus):
                     scaler.unscale_(optimizer._optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
 
-                # Update weights
+                # Update weightss
                 optimizer.step_and_update_lr(scaler)
                 scaler.update()
                 optimizer.zero_grad()
 
-                if did_x0_init:
+                # if did_x0_init: # 수정
 
-                    #### Update neu_base (EMA, x0) ####
-                    if hasattr(model, "module"):
-                        fs2 = model.module
-                    else:
-                        fs2 = model
+                #### Update neu_base (EMA, x0) ####
+                if hasattr(model, "module"):
+                    fs2 = model.module
+                else:
+                    fs2 = model
 
-                    emotions = batch[3]  # (B,)
-                    orig_style_ref_embs = output[16]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs
+                emotions = batch[3]  # (B,)
+                orig_style_ref_embs = output[16]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs
 
-                    neutral_mask = (emotions == fs2.neutral_id).bool()
+                neutral_mask = (emotions == fs2.neutral_id).bool()
 
-                    if neutral_mask.any():
-                        rvq_mean = orig_style_ref_embs[neutral_mask].mean(dim=0, keepdim=True)
-                        rvq_mean = rvq_mean.to(fs2.neu_base.device, dtype=fs2.neu_base.dtype)
+                if neutral_mask.any():
+                    neu_embs = orig_style_ref_embs[neutral_mask]  # (N_neu, D)
 
-                        alpha0 = 1e-2                 # 기본 이동 평균 계수
-                        alpha = alpha0 / (step ** 0.5)  # step에 따라 점점 작아지게 (안정적 수렴)
+                    alpha0 = 3e-2
+                    alpha = alpha0 / (step ** 0.3)
 
-                        with torch.no_grad():
-                            fs2.neu_base.mul_(1.0 - alpha).add_(alpha * rvq_mean)
+                    with torch.no_grad():
+                        for e in neu_embs:
+                            e = e.to(fs2.neu_base.device, fs2.neu_base.dtype)
+                            fs2.neu_base.mul_(1.0 - alpha).add_(alpha * e)
 
                 if rank == 0:
                     if step % log_step == 0:
@@ -202,6 +217,9 @@ def train(rank, args, configs, batch_size, num_gpus):
                             ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
                             *losses_
                         )
+
+                        if losses[9].item() < 0.3 and step > 100000:
+                            classifier_loss_small = True
 
                         with open(os.path.join(train_log_path, "log.txt"), "a") as f:
                             f.write(message1 + message2 + "\n")
@@ -243,7 +261,8 @@ def train(rank, args, configs, batch_size, num_gpus):
                     if step % val_step == 0:
                         torch.cuda.empty_cache()
                         model.eval()
-                        message = evaluate(device, model, step, configs, val_logger, vocoder, losses)
+                        message, cls_loss_val = evaluate(device, model, step, configs, val_logger, vocoder, losses)
+
                         with open(os.path.join(val_log_path, "log.txt"), "a") as f:
                             f.write(message + "\n")
                         outer_bar.write(message)
@@ -258,7 +277,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                             },
                             os.path.join(
                                 train_config["path"]["ckpt_path"],
-                                "{}_m.pth.tar".format(step),
+                                "{}.pth.tar".format(step),
                             ),
                         )
 
@@ -272,7 +291,7 @@ def train(rank, args, configs, batch_size, num_gpus):
             if rank == 0:
                 inner_bar.update(1)
         
-        if epoch == 2:
+        if epoch == 1:
             print("[INIT] Warm-up finished. Running K-means initialization ...")
 
             with torch.no_grad():
@@ -321,7 +340,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 fs2.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs_all - styles_all[:, :256] - styles_all[:, 256:512])
 
 
-        if  did_x0_init:
+        if epoch > 1:
             val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
 
             with open(val_path, encoding='utf-8') as f:
@@ -374,7 +393,8 @@ def train(rank, args, configs, batch_size, num_gpus):
             else:
                 model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
-        if epoch == 3:
+        if not did_x0_init:
+        # if classifier_loss_small:
             with torch.no_grad():
                 fs2 = model.module if hasattr(model, "module") else model
 
@@ -417,6 +437,10 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                 print("[INIT] mode indices:", stage_mode_idx)
 
+                with open(os.path.join(train_log_path, "log.txt"), "a") as f:
+                    f.write(
+                        f"[INIT] mode indices: {stage_mode_idx}, step: {step}, epoch: {epoch}\n")
+
                 # === 3. codebook에서 vector 가져와 concat ===
                 stage_vecs = []
                 for s in range(3):
@@ -431,6 +455,10 @@ def train(rank, args, configs, batch_size, num_gpus):
                                                     dtype=fs2.neu_base.dtype))
 
                 print(f"[INIT] x0(neu_base) initialized with mode neutral codebook vector.")
+                
+            if classifier_loss_small:
+                with open(os.path.join(train_log_path, "log.txt"), "a") as f:
+                    f.write(f"[CLASSIFIER LOSS SMALL] did_x0_init = True \n")
                 did_x0_init = True
 
         epoch += 1
