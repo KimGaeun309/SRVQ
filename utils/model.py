@@ -15,7 +15,7 @@ def get_model(args, configs, device, train=False):
 
     model = FastSpeech2(preprocess_config, model_config).to(device)
     
-    if args.restore_step:
+    if args.restore_step and args.restore_step != '0':
         ckpt_path = os.path.join(
             train_config["path"]["ckpt_path"],
             "{}.pth.tar".format(args.restore_step),
@@ -25,9 +25,9 @@ def get_model(args, configs, device, train=False):
 
     if train:
         scheduled_optim = ScheduledOptim(
-            model, train_config, model_config, args.restore_step
+            model, train_config, model_config, int(args.restore_step.split('_')[0]) # args.restore_step 
         )
-        if args.restore_step:
+        if args.restore_step and args.restore_step != '0':
             scheduled_optim.load_state_dict(ckpt["optimizer"])
         model.train()
         return model, scheduled_optim

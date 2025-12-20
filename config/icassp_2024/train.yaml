@@ -8,7 +8,7 @@ path:
   log_path: "./output/log/icassp_2024"
   result_path: "./output/result/icassp_2024"
 optimizer:
-  batch_size: 64
+  batch_size: 32
   betas: [0.9, 0.98]
   eps: 0.000000001
   weight_decay: 0.0
@@ -23,3 +23,4 @@ step:
   synth_step: 2000
   val_step: 1000
   save_step: 10000
+  extractor_only_step: 300000

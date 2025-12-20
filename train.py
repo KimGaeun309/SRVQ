@@ -52,7 +52,7 @@ def train(rank, args, configs, batch_size, num_gpus):
         )
     device = torch.device('cuda:{:d}'.format(rank))
 
-    args.restore_step = int(args.restore_step)
+    args.restore_step = str(args.restore_step)
 
 
     # Get Dataset
@@ -83,7 +83,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     vocoder = get_vocoder(model_config, device)
 
     # Training
-    step = int(args.restore_step) + 1
+    step = int(args.restore_step.split('_')[0]) + 1
     epoch = 1
     grad_acc_step = train_config["optimizer"]["grad_acc_step"]
     grad_clip_thresh = train_config["optimizer"]["grad_clip_thresh"]
@@ -92,6 +92,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     save_step = train_config["step"]["save_step"]
     synth_step = train_config["step"]["synth_step"]
     val_step = train_config["step"]["val_step"]
+    extractor_only_step = train_config["step"]["extractor_only_step"]
 
     if rank == 0:
         print("Number of FastSpeech2 Parameters: {}\n".format(get_param_num(model)))
@@ -106,32 +107,56 @@ def train(rank, args, configs, batch_size, num_gpus):
         val_logger = SummaryWriter(val_log_path)
 
         outer_bar = tqdm(total=total_step, desc="Training", position=0)
-        outer_bar.n = int(args.restore_step)
+        outer_bar.n = int(args.restore_step.split('_')[0])
         outer_bar.update()
 
     train = True
     did_x0_init = False
-    classifier_loss_small = False
+    # classifier_loss_small = Fals
+
     model.train()
+
     while train:
-        # === NEW: style predictor freeze/unfreeze ===
+        # # === NEW: style predictor freeze/unfreeze ===
+        # if not did_x0_init:
+        #     # freeze predictor
+        #     if hasattr(model, "module"):
+        #         for p in model.module.style_predictor.parameters():
+        #             p.requires_grad = False
+        #     else:
+        #         for p in model.style_predictor.parameters():
+        #             p.requires_grad = False
+        # else:
+        #     # unfreeze predictor
+        #     if hasattr(model, "module"):
+        #         for p in model.module.style_predictor.parameters():
+        #             p.requires_grad = True
+        #     else:
+        #         for p in model.style_predictor.parameters():
+        #             p.requires_grad = True
+        # # ============================================
+        fs2 = model.module if hasattr(model, "module") else model
+
+        # Phase1: extractor only => predictor freeze
         if not did_x0_init:
-            # freeze predictor
-            if hasattr(model, "module"):
-                for p in model.module.style_predictor.parameters():
-                    p.requires_grad = False
-            else:
-                for p in model.style_predictor.parameters():
-                    p.requires_grad = False
+            for p in fs2.style_predictor.parameters():
+                p.requires_grad = False
         else:
-            # unfreeze predictor
-            if hasattr(model, "module"):
-                for p in model.module.style_predictor.parameters():
-                    p.requires_grad = True
-            else:
-                for p in model.style_predictor.parameters():
-                    p.requires_grad = True
-        # ============================================
+            for p in fs2.style_predictor.parameters():
+                p.requires_grad = True
+
+        # Phase3+: extractor freeze (ref_enc + style_extractor)
+        if did_x0_init:
+            for p in fs2.ref_enc.parameters():
+                p.requires_grad = False
+            for p in fs2.style_extractor.parameters():
+                p.requires_grad = False
+        else:
+            for p in fs2.ref_enc.parameters():
+                p.requires_grad = True
+            for p in fs2.style_extractor.parameters():
+                p.requires_grad = True
+
         if rank == 0:
             inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
         if num_gpus > 1:
@@ -143,26 +168,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 batch = to_device(batch, device)
                 
                 basenames = batch[0]
-                
-                # pitch_mel, energy_mel = [], []
-
-                # for basename in basenames:
-                    # pitch_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/pitch_only/{basename}_pitch.npy"
-                    # energy_path = f"/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/normalized_data/energy_only/{basename}_energy.npy"
-                    # pitch_mel.append(np.load(pitch_path).T)
-                    # energy_mel.append(np.load(energy_path).T)
-                
-                # pitch_mel = pad_2D(pitch_mel)
-                # pitch_mel = torch.from_numpy(pitch_mel).to('cuda')
-                # energy_mel = pad_2D(energy_mel)
-                # energy_mel = torch.from_numpy(energy_mel).to('cuda')
-
-                if hasattr(model, "module"):
-                    fs2 = model.module
-                else:
-                    fs2 = model
-                
-
+     
                 with amp.autocast(args.use_amp):
                     # Forward
                     output = model(*(batch[2:]), step=step, inference=False) # To do Step
@@ -185,30 +191,47 @@ def train(rank, args, configs, batch_size, num_gpus):
                 scaler.update()
                 optimizer.zero_grad()
 
-                # if did_x0_init: # 수정
+                # if did_x0_init:
 
-                #### Update neu_base (EMA, x0) ####
-                if hasattr(model, "module"):
-                    fs2 = model.module
-                else:
-                    fs2 = model
+                #     if hasattr(model, "module"):
+                #         fs2 = model.module
+                #     else:
+                #         fs2 = model
 
-                emotions = batch[3]  # (B,)
-                orig_style_ref_embs = output[16]  # fastspeech2.forward 반환 순서상 orig_style_ref_embs
+                #     emotions = batch[3]                      # (B,)
+                #     orig_style_ref_embs = output[16]          # 필요 없으면 제거 가능
+                #     indices_list = output[15]                 # [(B,1), (B,1), (B,1)]
+                #                                             # ⚠️ 실제 output index 맞게 조정
 
-                neutral_mask = (emotions == fs2.neutral_id).bool()
+                #     neutral_mask = (emotions == fs2.neutral_id)
 
-                if neutral_mask.any():
-                    neu_embs = orig_style_ref_embs[neutral_mask]  # (N_neu, D)
+                #     if neutral_mask.any():
 
-                    alpha0 = 3e-2
-                    alpha = alpha0 / (step ** 0.3)
+                #         from collections import Counter
 
-                    with torch.no_grad():
-                        for e in neu_embs:
-                            e = e.to(fs2.neu_base.device, fs2.neu_base.dtype)
-                            fs2.neu_base.mul_(1.0 - alpha).add_(alpha * e)
+                #         stage_vecs = []
 
+                #         for s in range(3):  # VQ1, VQ2, VQ3
+                #             idx_all = indices_list[s][neutral_mask].view(-1)  # (N_neu,)
+
+                #             # batch 내 최빈 index
+                #             mode_idx = Counter(idx_all.tolist()).most_common(1)[0][0]
+
+                #             # codebook lookup
+                #             vec = fs2.style_extractor.vq_layers[s].embedding.weight[mode_idx]
+                #             stage_vecs.append(vec)
+
+                #         # concat → (1, 768)
+                #         batch_neu_vec = torch.cat(stage_vecs, dim=0).unsqueeze(0)
+                #         batch_neu_vec = batch_neu_vec.to(fs2.neu_base.device, fs2.neu_base.dtype)
+
+                #         # EMA
+                #         alpha0 = 3e-2
+                #         alpha = alpha0 / (step ** 0.3)
+
+                #         with torch.no_grad():
+                #             fs2.neu_base.mul_(1.0 - alpha).add_(alpha * batch_neu_vec)
+                        
                 if rank == 0:
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
@@ -218,8 +241,8 @@ def train(rank, args, configs, batch_size, num_gpus):
                             *losses_
                         )
 
-                        if losses[9].item() < 0.3 and step > 100000:
-                            classifier_loss_small = True
+                        # if losses[9].item() < 0.3 and step > 200000:
+                        #     classifier_loss_small = True
 
                         with open(os.path.join(train_log_path, "log.txt"), "a") as f:
                             f.write(message1 + message2 + "\n")
@@ -277,9 +300,10 @@ def train(rank, args, configs, batch_size, num_gpus):
                             },
                             os.path.join(
                                 train_config["path"]["ckpt_path"],
-                                "{}.pth.tar".format(step),
+                                "{}_2stage.pth.tar".format(step),
                             ),
                         )
+                        print("Save checkpoint at step {}_2stage.pth.tar".format(step))
 
                 if step == total_step:
                     train = False
@@ -340,7 +364,8 @@ def train(rank, args, configs, batch_size, num_gpus):
                 fs2.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs_all - styles_all[:, :256] - styles_all[:, 256:512])
 
 
-        if epoch > 1:
+        # dead code update
+        if epoch > 1 and step < extractor_only_step:
             val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
 
             with open(val_path, encoding='utf-8') as f:
@@ -393,8 +418,8 @@ def train(rank, args, configs, batch_size, num_gpus):
             else:
                 model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
 
-        if not did_x0_init:
-        # if classifier_loss_small:
+        # if not did_x0_init:
+        if step >= extractor_only_step and not did_x0_init:
             with torch.no_grad():
                 fs2 = model.module if hasattr(model, "module") else model
 
@@ -456,9 +481,9 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                 print(f"[INIT] x0(neu_base) initialized with mode neutral codebook vector.")
                 
-            if classifier_loss_small:
-                with open(os.path.join(train_log_path, "log.txt"), "a") as f:
-                    f.write(f"[CLASSIFIER LOSS SMALL] did_x0_init = True \n")
+            # if classifier_loss_small:
+            #     with open(os.path.join(train_log_path, "log.txt"), "a") as f:
+            #         f.write(f"[CLASSIFIER LOSS SMALL] did_x0_init = True \n")
                 did_x0_init = True
 
         epoch += 1
