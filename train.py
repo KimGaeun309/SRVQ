@@ -138,24 +138,24 @@ def train(rank, args, configs, batch_size, num_gpus):
         fs2 = model.module if hasattr(model, "module") else model
 
         # Phase1: extractor only => predictor freeze
-        if not did_x0_init:
+        if step < extractor_only_step:
             for p in fs2.style_predictor.parameters():
                 p.requires_grad = False
         else:
             for p in fs2.style_predictor.parameters():
                 p.requires_grad = True
 
-        # Phase3+: extractor freeze (ref_enc + style_extractor)
-        if did_x0_init and step >= 350000:
-            for p in fs2.ref_enc.parameters():
-                p.requires_grad = False
-            for p in fs2.style_extractor.parameters():
-                p.requires_grad = False
-        else:
-            for p in fs2.ref_enc.parameters():
-                p.requires_grad = True
-            for p in fs2.style_extractor.parameters():
-                p.requires_grad = True
+        # # Phase3+: extractor freeze (ref_enc + style_extractor)
+        # if step >= extractor_only_step + 50000: # 350000 step 이후 style extractor freeze
+        #     for p in fs2.ref_enc.parameters():
+        #         p.requires_grad = False
+        #     for p in fs2.style_extractor.parameters():
+        #         p.requires_grad = False
+        # else:
+        #     for p in fs2.ref_enc.parameters():
+        #         p.requires_grad = True
+        #     for p in fs2.style_extractor.parameters():
+        #         p.requires_grad = True
 
         if rank == 0:
             inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
