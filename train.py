@@ -146,7 +146,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 p.requires_grad = True
 
         # Phase3+: extractor freeze (ref_enc + style_extractor)
-        if did_x0_init:
+        if did_x0_init and step >= 350000:
             for p in fs2.ref_enc.parameters():
                 p.requires_grad = False
             for p in fs2.style_extractor.parameters():

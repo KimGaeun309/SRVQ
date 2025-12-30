@@ -333,7 +333,7 @@ class FastSpeech2(nn.Module):
             style_ref_embs = self.style_extract_fc(style_ref_embs) 
             # [B, 256 * n_stages] -> [B, 256]
 
-            if did_x0_init and step > 350000:
+            if did_x0_init and step >= 350000:
                 output = output + style_pred_embs.unsqueeze(1)
                 # codebooks 구성 (num_rvq == 3 가정)
                 z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
