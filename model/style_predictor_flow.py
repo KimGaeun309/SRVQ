@@ -412,7 +412,7 @@ class StylePredictorFlowMultiStage(nn.Module):
             )
 
             if return_loss:
-                x_t, flow_loss = out_i
+                x_t, flow_loss, soft_zero_loss = out_i
                 style_outputs.append(x_t)
                 flow_losses.append(flow_loss)
                 soft_zero_losses.append(soft_zero_loss)
