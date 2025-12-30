@@ -97,6 +97,7 @@ class FastSpeech2Loss(nn.Module):
             guided_loss,
             vq_loss,
             flow_loss,
+            soft_zero_loss,
             min_encoding_indices,
             orig_style_ref_embs,
             x0_raw,                     # ★ 추가: fastspeech2.forward에서 넘겨줌
@@ -168,8 +169,9 @@ class FastSpeech2Loss(nn.Module):
 
         # RF term (모델에서 이미 batch 평균된 scalar로 넘어온다고 가정)
         style_flow_term = flow_loss * 30.0
+        soft_zero_term = soft_zero_loss * 2.0
         guided_loss = guided_loss * 0.1
-        total_style_loss = style_loss + guided_loss + style_flow_term
+        total_style_loss = style_loss + guided_loss + style_flow_term + soft_zero_term
 
         # # ====== Neutral L2 loss: RVQ output vs neu_emb ======
         # neutral_l2_loss = torch.tensor(0.0, device=device)
@@ -255,4 +257,5 @@ class FastSpeech2Loss(nn.Module):
             classifier_loss,
             style_flow_term,
             neutral_align_loss,
+            soft_zero_term,
         )

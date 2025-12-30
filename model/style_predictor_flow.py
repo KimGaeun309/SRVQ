@@ -292,6 +292,7 @@ class StylePredictorFlow(nn.Module):
         return_loss: bool = False,
         t_end: float = 1.0,               # 0->t_end 적분 (강도 제어)
         steps: Optional[int] = None,      # 적분 스텝(정확도/속도 트레이드오프)
+        neutral_mask: Optional[torch.Tensor] = None,  # [B] bool, neu_emb가 neutral sample인 경우
     ) -> Tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
         """
         train:  target_style!=None and return_loss=True -> (x(t_end), flow_loss)
@@ -306,6 +307,7 @@ class StylePredictorFlow(nn.Module):
 
         # 3) x(t_end) 계산 (inference 루트)
         integ_steps = steps if (steps is not None) else self.flow_steps
+
         x_t = self._euler_integrate_to(
             x0=x0,
             text_ctx=text_ctx,
@@ -325,7 +327,31 @@ class StylePredictorFlow(nn.Module):
                 neu_cond=neu_emb if self.vfield.use_neu_token else None,
                 x0=x0,
             )
-            return x_t, flow_loss
+
+            # -------------------------------
+            # soft-zero loss (neutral only)
+            # -------------------------------
+            soft_zero_loss = torch.tensor(0.0, device=x0.device)
+
+            if neutral_mask is not None and neutral_mask.any():
+                # RF에서 쓰는 동일한 x_t 정의 (t ~ U[0,1])
+                B = x0.size(0)
+                t_rand = torch.rand(B, 1, device=x0.device, dtype=x0.dtype)
+
+                x_t = (1.0 - t_rand) * x0 + t_rand * target_style
+
+                v_t = self.vfield(
+                    x_t,
+                    t_rand,
+                    text_ctx=text_ctx,
+                    style_tag_emb=style_tag_emb,
+                    neu_cond=neu_emb if self.vfield.use_neu_token else None,
+                    x0=x0,
+                )
+
+                # neutral에서 v ≈ 0
+                soft_zero_loss = (v_t[neutral_mask] ** 2).mean()
+            return x_t, flow_loss, soft_zero_loss
 
         return x_t
     
@@ -352,10 +378,12 @@ class StylePredictorFlowMultiStage(nn.Module):
         return_loss: bool = False,
         t_end: float = 1.0,
         steps: Optional[int] = None,
+        neutral_mask: Optional[torch.Tensor] = None,  # [B] bool
     ) -> Tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
 
         style_outputs: List[torch.Tensor] = []
         flow_losses: List[torch.Tensor] = []
+        soft_zero_losses: List[torch.Tensor] = []
 
 
 
@@ -380,18 +408,22 @@ class StylePredictorFlowMultiStage(nn.Module):
                 return_loss=return_loss,
                 t_end=t_end,
                 steps=steps,
+                neutral_mask=neutral_mask,
             )
 
             if return_loss:
                 x_t, flow_loss = out_i
                 style_outputs.append(x_t)
                 flow_losses.append(flow_loss)
+                soft_zero_losses.append(soft_zero_loss)
             else:
                 style_outputs.append(out_i)
 
         style_concat = torch.cat(style_outputs, dim=-1)  # [B, 256 * 3]
 
         if return_loss:
-            total_loss = sum(flow_losses) / self.n_stages
-            return style_concat, total_loss
+            total_flow_loss = sum(flow_losses) / self.n_stages
+            total_soft_zero_loss = sum(soft_zero_losses) / self.n_stages
+            return style_concat, total_flow_loss, total_soft_zero_loss
+
         return style_concat

@@ -112,6 +112,8 @@ def log(
         logger.add_scalar("Loss/vq_loss", losses[8], step)
         logger.add_scalar("Loss/cls_loss(indices)", losses[9], step)
         logger.add_scalar("Loss/flow_loss", losses[10], step)
+        logger.add_scalar("Loss/neu_align_loss", losses[11], step)
+        logger.add_scalar("Loss/soft_zero_loss", losses[12], step) 
 
     if fig is not None:
         logger.add_figure(tag, fig)

@@ -201,6 +201,7 @@ class FastSpeech2(nn.Module):
         step=None,
         inference=False,
         intensity=1.0,
+        did_x0_init=False,
         # pitch_mel=None,
         # energy_mel=None,
         # init_flag=False,
@@ -293,7 +294,12 @@ class FastSpeech2(nn.Module):
             # --------------------------
             # (B) Rectified Flow predictor  →  style_pred_embs & flow_loss
             # --------------------------
-            style_pred_embs, flow_loss = self.style_predictor(
+            neutral_mask = None
+            if self.neutral_id is not None:
+                neutral_mask = (emotions == self.neutral_id)  # [B]
+
+            
+            style_pred_embs, flow_loss, soft_zero_loss = self.style_predictor(
                 text_enc=output,                 # [B,T,256]
                 style_tag_emb=style_tag_emb,     # [B,256]
 #                spk_emb=spk_emb,                 # [B,256] or None
@@ -303,13 +309,12 @@ class FastSpeech2(nn.Module):
                 return_loss=True,
                 t_end=t_end_train,
                 steps=steps_train,
+                neutral_mask=neutral_mask,
             )
 
             orig_style_pred_embs = style_pred_embs
 
-            # codebooks 구성 (num_rvq == 3 가정)
-            z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
-            codebooks = [z1, z2, z3, z1+z2+z3]
+            
 
             # # RVQ stage 수에 맞게 복제 
             # if self.model_config["residual_vq"]["num_rvq"] == 4:
@@ -328,8 +333,13 @@ class FastSpeech2(nn.Module):
             style_ref_embs = self.style_extract_fc(style_ref_embs) 
             # [B, 256 * n_stages] -> [B, 256]
 
-
-            output = output + style_ref_embs.unsqueeze(1)
+            if did_x0_init:
+                output = output + style_pred_embs.unsqueeze(1)
+                # codebooks 구성 (num_rvq == 3 가정)
+                z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
+                codebooks = [z1, z2, z3, z1+z2+z3]
+            else:
+                output = output + style_ref_embs.unsqueeze(1)
 
             positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
             prosody_embedding = style_ref_embs.unsqueeze(1) + positions
@@ -373,6 +383,7 @@ class FastSpeech2(nn.Module):
             prosody_embedding = style_pred_embs.unsqueeze(1) + positions
 
             flow_loss = torch.tensor(0.0, device=device)
+            soft_zero_loss = torch.tensor(0.0, device=device)
 
         src_key_padding_mask = output[:, :, 0].eq(self.padding_idx).data
         prosody_key_padding_mask = prosody_embedding[:, :, 0].eq(self.padding_idx).data
@@ -437,6 +448,7 @@ class FastSpeech2(nn.Module):
             guided_loss,
             vq_loss,
             flow_loss, # Edit!
+            soft_zero_loss, # Edit!
             min_encoding_indices,
             orig_style_ref_embs, # Edit!
             neu_base_for_loss, # Edit!
