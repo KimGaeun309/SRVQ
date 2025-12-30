@@ -169,7 +169,7 @@ class FastSpeech2Loss(nn.Module):
 
         # RF term (모델에서 이미 batch 평균된 scalar로 넘어온다고 가정)
         style_flow_term = flow_loss * 30.0
-        soft_zero_term = soft_zero_loss * 2.0
+        soft_zero_term = soft_zero_loss *10.0
         guided_loss = guided_loss * 0.1
         total_style_loss = style_loss + guided_loss + style_flow_term + soft_zero_term
 
@@ -245,17 +245,17 @@ class FastSpeech2Loss(nn.Module):
         )
 
         return (
-            total_loss,
-            mel_loss,
-            postnet_mel_loss,
-            pitch_loss,
-            energy_loss,
-            duration_loss,
-            style_loss,
-            guided_loss,
-            vq_loss,
-            classifier_loss,
-            style_flow_term,
-            neutral_align_loss,
-            soft_zero_term,
+            total_loss,  # 0
+            mel_loss,  # 1
+            postnet_mel_loss, # 2
+            pitch_loss, # 3
+            energy_loss, # 4
+            duration_loss, # 5 
+            style_loss, # 6
+            guided_loss, # 7
+            vq_loss, # 8
+            classifier_loss, # 9
+            style_flow_term, # 10
+            neutral_align_loss, # 11
+            soft_zero_term, # 12
         )
