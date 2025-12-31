@@ -336,7 +336,7 @@ class FastSpeech2(nn.Module):
             if did_x0_init and step >= 350000:
                 output = output + style_pred_embs.unsqueeze(1)
                 # codebooks 구성 (num_rvq == 3 가정)
-                z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
+                z1, z2, z3 = torch.split(orig_style_pred_embs, 256, dim=1)
                 codebooks = [z1, z2, z3, z1+z2+z3]
             else:
                 output = output + style_ref_embs.unsqueeze(1)

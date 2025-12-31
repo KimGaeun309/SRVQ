@@ -84,6 +84,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
     # Training
     step = int(args.restore_step.split('_')[0]) + 1
+    print("Starting training from step {}...".format(step))
     epoch = 1
     grad_acc_step = train_config["optimizer"]["grad_acc_step"]
     grad_clip_thresh = train_config["optimizer"]["grad_clip_thresh"]
