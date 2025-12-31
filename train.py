@@ -367,14 +367,18 @@ def train(rank, args, configs, batch_size, num_gpus):
 
         # dead code update
         if epoch > 1 and step < extractor_only_step:
-            val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050/train.txt'
+            # val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd/train.txt'
+            val_path = preprocess_config["path"]["preprocessed_path"] + "/train.txt"
 
             with open(val_path, encoding='utf-8') as f:
                 val_infos = [line.strip().split("|") for line in f]
 
             import json
-            with open("preprocessed_data/emo_kr_22050/emotions.json") as f:
+
+            with open(preprocess_config["path"]["preprocessed_path"] + "/emotions.json") as f:
                 emotion_map = json.load(f)
+                n_emotions = len(emotion_map)
+                print("Number of emotions:", n_emotions)
 
             val_basenames = []
             emotions = []
@@ -390,7 +394,7 @@ def train(rank, args, configs, batch_size, num_gpus):
             for i in range(len(val_basenames)):
                 val_basename = val_basenames[i]
                 emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
-                mel = np.load(f'preprocessed_data/emo_kr_22050/mel/{val_basename[:3]}-mel-{val_basename}.npy')
+                mel = np.load(f'preprocessed_data/{args.dataset}/mel/{val_basename[:3]}-mel-{val_basename}.npy')
                 mel = torch.from_numpy(mel).float().to(device)
                 mel = mel.unsqueeze(0)
 
@@ -406,15 +410,15 @@ def train(rank, args, configs, batch_size, num_gpus):
             torch.cuda.empty_cache()
 
 
-            if model.style_extractor.vq_layers[0].dead_codes_count() < (7/2):
+            if model.style_extractor.vq_layers[0].dead_codes_count() < (n_emotions/2):
                 model.style_extractor.vq_layers[0].greedy_restart()
             else:
                 model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
-            if model.style_extractor.vq_layers[1].dead_codes_count() < (7/2):
+            if model.style_extractor.vq_layers[1].dead_codes_count() < (n_emotions/2):
                 model.style_extractor.vq_layers[1].greedy_restart()
             else:
                 model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
-            if model.style_extractor.vq_layers[2].dead_codes_count() < (7/2):
+            if model.style_extractor.vq_layers[2].dead_codes_count() < (n_emotions/2):
                 model.style_extractor.vq_layers[2].greedy_restart()
             else:
                 model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
