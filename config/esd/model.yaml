@@ -54,7 +54,7 @@ max_seq_len: 1000
 
 vocoder:
   model: "HiFi-GAN" # support 'HiFi-GAN', 'MelGAN'
-  speaker: "finetune" # support  'LJSpeech', 'universal', 'finetune', 'icassp_2024'
+  speaker: "LJSpeech" # support  'LJSpeech', 'universal', 'finetune', 'icassp_2024'
   
 block_type: "transformer"
 
@@ -112,7 +112,7 @@ max_seq_len: 1000
 
 vocoder:
   model: "HiFi-GAN" # support 'HiFi-GAN', 'MelGAN'
-  speaker: "universal" # support  'LJSpeech', 'universal', 'finetune', 'icassp_2024'
+  speaker: "esd" # support  'LJSpeech', 'universal', 'finetune', 'icassp_2024'
   
 
 

@@ -386,17 +386,29 @@ def train(rank, args, configs, batch_size, num_gpus):
             ref_embs = []
 
             for i in range(len(val_infos)):
-                if i % 25 != 0: continue
+                if i % 25 != 0:
+                    continue
                 val_info = val_infos[i]
-                val_basenames.append(val_info[0])
-                emotions.append(emotion_map[val_info[2]])
-            
+
+                basename = val_info[0]
+                speaker  = val_info[1]   # ★ 이걸 써야 함
+                emotion  = val_info[2]
+
+                val_basenames.append((basename, speaker))
+                emotions.append(emotion_map[emotion])
+                        
             for i in range(len(val_basenames)):
-                val_basename = val_basenames[i]
+                val_basename, speaker = val_basenames[i]
                 emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
-                mel = np.load(f'preprocessed_data/{args.dataset}/mel/{val_basename[:3]}-mel-{val_basename}.npy')
-                mel = torch.from_numpy(mel).float().to(device)
-                mel = mel.unsqueeze(0)
+
+                mel_path = os.path.join(
+                    preprocess_config["path"]["preprocessed_path"],
+                    "mel",
+                    f"{speaker}-mel-{val_basename}.npy"
+                )
+
+                mel = np.load(mel_path)
+                mel = torch.from_numpy(mel).float().to(device).unsqueeze(0)
 
                 ref_emb, cls_loss = model.ref_enc(mel, emotion)
                 style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)

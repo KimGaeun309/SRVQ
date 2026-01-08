@@ -72,6 +72,8 @@ def get_vocoder(config, device):
             ckpt = torch.load("hifigan/g_icassp_2024_50", map_location=device)
         elif speaker == "finetune":
             ckpt = torch.load("hifigan/g_02540000", map_location=device)
+        elif speaker == "esd":
+            ckpt = torch.load("hifigan/g_02530000_esd", map_location=device)
 
         print(f'vocoder: {speaker}')
         vocoder.load_state_dict(ckpt["generator"])

@@ -438,12 +438,13 @@ class Preprocessor:
         energy_filename = "{}-energy-{}.npy".format(speaker, basename)
         np.save(os.path.join(self.out_dir, "energy", energy_filename), energy)
 
-        # mel_filename = "{}-mel-{}.npy".format(speaker, basename)
-        # np.save(
-        #     os.path.join(self.out_dir, "mel", mel_filename),
-        #     mel_spectrogram.T,
-        # )
+        mel_filename = "{}-mel-{}.npy".format(speaker, basename)
+        np.save(
+            os.path.join(self.out_dir, "mel", mel_filename),
+            mel_spectrogram.T,
+        )
         
+    
         return ( #주석
             # "|".join([basename, speaker, emotion, phone[0], raw_text]), 
             None, 
