@@ -13,7 +13,7 @@ preprocessing:
     text_cleaners: ["english_cleaners"]
     language: "en"
   audio:
-    sampling_rate: 22050
+    sampling_rate: 16000
     max_wav_value: 32768.0
   stft:
     filter_length: 1024

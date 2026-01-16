@@ -72,12 +72,12 @@ mel_data = np.load('./preprocessed_data/emo_kr_22050/mel/{}.npy'.format(mel_base
 
 """
 
-mel_data = np.load('/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_norm_wavs/pitch_norm/CHY/CHY_ang_000001.npy')
+mel_data = np.load('/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd/mel/0011-mel-0011_000002.npy')
 
 mel_data = np.transpose(mel_data)
 
-fig = plot_mel([mel_data], ["CHY_ang_000001_p"])
-plt.savefig('./preprocessed_mels/{}.png'.format("CHY_ang_000001_p"), format='png')
+fig = plot_mel([mel_data], ["0011-mel-0011_000002"])
+plt.savefig('./preprocessed_mels/{}.png'.format("0011-mel-0011_000002"), format='png')
 plt.close()
 
 print("mel_data shape", mel_data.shape)
