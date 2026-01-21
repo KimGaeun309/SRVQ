@@ -11,3 +11,4 @@ dhs_output/
 hifigan/
 output/__pycache__/
 *.pyc
+output/
