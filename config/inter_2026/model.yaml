@@ -63,3 +63,11 @@ style_predictor:
   steps_infer: 2
   neutral_id: 5           # emotions.json에서 'neu'가 5라면
   neutral_ref_noise_k: 0.05
+
+
+ser_teacher:
+  use_ser_teacher: True
+  repo_path: /root/mydir/ICASSP2024_FS2-develop/Speech-Emotion-Recognition
+  ckpt_path: /root/mydir/ICASSP2024_FS2-develop/Speech-Emotion-Recognition/checkpoint/best_model.pth
+  num_classes: 7
+  feat_dim: 

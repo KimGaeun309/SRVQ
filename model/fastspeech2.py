@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 
 import torch
 import torch.nn as nn
@@ -177,6 +178,30 @@ class FastSpeech2(nn.Module):
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
         self.neutral_id: Optional[int] = sp_cfg.get("neutral_id", None)
+
+        # ===== SER teacher =====
+        ser_cfg = model_config.get("ser_teacher", {})
+        self.use_ser_teacher = ser_cfg.get("use", False)
+
+        if self.use_ser_teacher:
+            sys.path.append(ser_cfg["repo_path"])  # Speech-Emotion-Recognition 폴더 경로
+            from acrnn import acrnn as SER_ACRNN
+
+            self.ser_teacher = SER_ACRNN(
+                num_classes=ser_cfg.get("num_classes", 7),
+                dropout_keep_prob=1.0,
+            )
+
+            ckpt = torch.load(ser_cfg["ckpt_path"], map_location="cpu")
+            self.ser_teacher.load_state_dict(ckpt, strict=True)
+            self.ser_teacher.eval()
+
+            for p in self.ser_teacher.parameters():
+                p.requires_grad = False
+
+            # SER feat dim = F1 = 64
+            self.ser_proj = nn.Linear(ser_cfg.get("feat_dim", 64),
+                                    model_config["transformer"]["encoder_hidden"])  # 256
 
 
     def forward(
