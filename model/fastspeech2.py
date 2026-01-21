@@ -1,19 +1,18 @@
 import os
 import json
-import sys
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from .text2style_aligner import Text2Style_Aligner
+# from .text2style_aligner import Text2Style_Aligner
 
 # # Flow style predictor
 # from .style_predictor import StylePredictor, LinearNorm
 from .style_predictor_flow import StylePredictorFlowMultiStage
 from .style_predictor import LinearNorm
-from .transformers.transformer import Encoder, Decoder, MelDecoder, LightMelDecoder
+from .transformers.transformer import Encoder, Decoder #, MelDecoder, LightMelDecoder
 from .transformers.layers import PostNet
 from .modules import VarianceAdaptor, SinusoidalPositionalEmbedding
 from utils.tools import get_mask_from_lengths
@@ -35,11 +34,7 @@ class FastSpeech2(nn.Module):
 
         self.encoder = Encoder(model_config)
         self.variance_adaptor = VarianceAdaptor(preprocess_config, model_config)
-        if model_config["residual_vq"]["num_rvq"] == 3:
-            self.decoder = MelDecoder(model_config) # vq3
-        else:
-            # self.decoder = Decoder(model_config) # vq2, vq4
-            pass
+        self.decoder = Decoder(model_config) # 수정. (TSP-TTS 없애기)
         self.mel_linear = nn.Linear(
             model_config["transformer"]["decoder_hidden"],
             preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
@@ -163,15 +158,16 @@ class FastSpeech2(nn.Module):
             noise_k_infer=sp_cfg.get("noise_k_infer", 0.0),
         )
 
-        self.cross_attn = Text2Style_Aligner(
-            num_layers=2,
-            hidden_size=256,
-        )
+        # self.cross_attn = Text2Style_Aligner(
+        #     num_layers=2,
+        #     hidden_size=256,
+        # )
 
-        self.text2style_alignment = Text2Style_Aligner(
-            num_layers=2,
-            hidden_size=256,
-        )
+        # self.text2style_alignment = Text2Style_Aligner(
+        #     num_layers=2,
+        #     hidden_size=256,
+        # )
+
         self.padding_idx = len(symbols) + 1
 
         self.max_source_positions = 2000
@@ -181,30 +177,6 @@ class FastSpeech2(nn.Module):
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
         self.neutral_id: Optional[int] = sp_cfg.get("neutral_id", None)
-
-        # ===== SER teacher =====
-        ser_cfg = model_config.get("ser_teacher", {})
-        self.use_ser_teacher = ser_cfg.get("use", False)
-
-        if self.use_ser_teacher:
-            sys.path.append(ser_cfg["repo_path"])  # Speech-Emotion-Recognition 폴더 경로
-            from acrnn import acrnn as SER_ACRNN
-
-            self.ser_teacher = SER_ACRNN(
-                num_classes=ser_cfg.get("num_classes", 7),
-                dropout_keep_prob=1.0,
-            )
-
-            ckpt = torch.load(ser_cfg["ckpt_path"], map_location="cpu")
-            self.ser_teacher.load_state_dict(ckpt, strict=True)
-            self.ser_teacher.eval()
-
-            for p in self.ser_teacher.parameters():
-                p.requires_grad = False
-
-            # SER feat dim = F1 = 64
-            self.ser_proj = nn.Linear(ser_cfg.get("feat_dim", 64),
-                                    model_config["transformer"]["encoder_hidden"])  # 256
 
 
     def forward(
@@ -294,7 +266,6 @@ class FastSpeech2(nn.Module):
                 #     self.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256])
                 #     self.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256] - style_ref_embs[:, 256:512])
                     
-
             orig_style_ref_embs = style_ref_embs
 
 
@@ -363,8 +334,8 @@ class FastSpeech2(nn.Module):
             # else:
             output = output + style_ref_embs.unsqueeze(1)
 
-            positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
-            prosody_embedding = style_ref_embs.unsqueeze(1) + positions
+            # positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
+            # prosody_embedding = style_ref_embs.unsqueeze(1) + positions
 
         else:
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
@@ -401,23 +372,23 @@ class FastSpeech2(nn.Module):
             style_pred_embs = self.style_pred_fc(style_pred_embs)
 
             output = output + style_pred_embs.unsqueeze(1)
-            positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])
-            prosody_embedding = style_pred_embs.unsqueeze(1) + positions
+            # positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])
+            # prosody_embedding = style_pred_embs.unsqueeze(1) + positions
 
             flow_loss = torch.tensor(0.0, device=device)
             soft_zero_loss = torch.tensor(0.0, device=device)
 
-        src_key_padding_mask = output[:, :, 0].eq(self.padding_idx).data
-        prosody_key_padding_mask = prosody_embedding[:, :, 0].eq(self.padding_idx).data
+        # src_key_padding_mask = output[:, :, 0].eq(self.padding_idx).data
+        # prosody_key_padding_mask = prosody_embedding[:, :, 0].eq(self.padding_idx).data
 
-        # Text2style_alignment
-        t2s_align, guided_loss_2, attn_emo_list = self.text2style_alignment(
-            output.transpose(0, 1),
-            prosody_embedding.transpose(0, 1),
-            src_key_padding_mask,
-            prosody_key_padding_mask
-        )
-        output = output + t2s_align.transpose(0, 1)
+        # # Text2style_alignment
+        # t2s_align, guided_loss_2, attn_emo_list = self.text2style_alignment(
+        #     output.transpose(0, 1),
+        #     prosody_embedding.transpose(0, 1),
+        #     src_key_padding_mask,
+        #     prosody_key_padding_mask
+        # )
+        # output = output + t2s_align.transpose(0, 1)
 
         # Variance Adaptor
         (
@@ -441,18 +412,21 @@ class FastSpeech2(nn.Module):
             d_control,
         )
 
-        # Decoder
-        if self.model_config["residual_vq"]["num_rvq"] == 3:
-            output, mel_masks = self.decoder(output, mel_masks, codebooks) # vq3
-        else:
-            output, mel_masks = self.decoder(output, mel_masks) # vq2, vq4
+        # # Decoder
+        # if self.model_config["residual_vq"]["num_rvq"] == 3:
+        #     output, mel_masks = self.decoder(output, mel_masks, codebooks) # vq3
+        # else:
+        #     output, mel_masks = self.decoder(output, mel_masks) # vq2, vq4
+
+        output, mel_masks = self.decoder(output, mel_masks)
         output = self.mel_linear(output)
 
         # Post-net
         postnet_output = self.postnet(output) + output
 
         # Loss
-        guided_loss = guided_loss_1 + guided_loss_2
+        guided_loss = guided_loss_1
+        attn_emo_list = None
 
         return (
             output,
