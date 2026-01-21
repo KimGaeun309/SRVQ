@@ -9,4 +9,5 @@ raw_norm_wavs/
 raw_wavs_dhs/
 dhs_output/
 hifigan/
-output/
+output/__pycache__/
+*.pyc
