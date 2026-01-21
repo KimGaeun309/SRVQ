@@ -288,9 +288,6 @@ class FastSpeech2(nn.Module):
             #         # style_ref_embs: [B, 256 * n_stages] 에 대해 복사
             #         style_ref_embs = style_ref_embs.clone()
             #         style_ref_embs[neutral_mask] = neu[neutral_mask]
-
-
-
             # --------------------------
             # (B) Rectified Flow predictor  →  style_pred_embs & flow_loss
             # --------------------------
