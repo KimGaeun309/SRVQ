@@ -212,7 +212,8 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
         max_mel_lens,
         pitches,
         energies,
-        durations
+        durations,
+        ser_embs,
     ) = batch
 
     (
