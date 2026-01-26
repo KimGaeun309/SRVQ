@@ -126,7 +126,7 @@ class Dataset(Dataset):
         pitches = pad_1D(pitches)
         energies = pad_1D(energies)
         durations = pad_1D(durations)
-ㄴ
+
         return (
             ids,
             raw_texts,
