@@ -126,6 +126,7 @@ class Dataset(Dataset):
         pitches = pad_1D(pitches)
         energies = pad_1D(energies)
         durations = pad_1D(durations)
+        ser_embs = np.stack([data[idx]["ser_emb"] for idx in idxs], axis=0)  # (B,256)
 
         return (
             ids,

@@ -30,6 +30,7 @@ class FastSpeech2Loss(nn.Module):
             pitch_targets,
             energy_targets,
             duration_targets,
+            ser_embs,
         ) = inputs[7:]
 
         (

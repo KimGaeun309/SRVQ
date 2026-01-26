@@ -115,10 +115,10 @@ class FastSpeech2(nn.Module):
         p_targets=None,
         e_targets=None,
         d_targets=None,
+        ser_embs=None,
         p_control=1.0,
         e_control=1.0,
         d_control=1.0,
-        ser_embs=None,
         step=None,
         inference=False,
         intensity=1.0,
@@ -127,7 +127,6 @@ class FastSpeech2(nn.Module):
         # energy_mel=None,
         # init_flag=False,
     ):
-        
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
         mel_masks = (
             get_mask_from_lengths(mel_lens, max_mel_len)
