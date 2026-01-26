@@ -76,7 +76,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
             loss_means.append(loss_sum / len(dataset))
             loss_means_.append(loss_sum / len(dataset))
 
-    message2 = (
+    message = (
         "Total: {:.4f}, Mel: {:.4f}, PostMel: {:.4f}, Pitch: {:.4f}, "
         "Energy: {:.4f}, Dur: {:.4f}, Style: {:.4f}, Flow: {:.4f}, Soft0: {:.4f}"
     ).format(*loss_means_)
