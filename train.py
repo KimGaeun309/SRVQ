@@ -79,7 +79,7 @@ def train(rank, args, configs, batch_size, num_gpus):
         dataset,
         batch_size=batch_size * group_size,
         shuffle=True,
-        num_workers=os.cpu_count(),
+        num_workers=os.cpu_count() // 3,
         sampler=data_sampler,
         collate_fn=dataset.collate_fn,
     )
