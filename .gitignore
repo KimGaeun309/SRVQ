@@ -9,5 +9,10 @@ raw_norm_wavs/
 raw_wavs_dhs/
 dhs_output/
 hifigan/
+output/
+pretrained_models/
+dhs_output/
+__pychche__/
+*.pyc
 output/__pycache__/
 *.pyc
