@@ -64,7 +64,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
                     else:
                         loss_sums[i] += losses[i].item() * len(batch[0])
 
-    classifier_loss_ = losses[9].item()
+    classifier_loss_ = losses[9].item() if len(losses) > 9 else 0.0
     loss_means = []
     loss_means_ = []
     for loss_sum in loss_sums:
@@ -79,7 +79,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
     message2 = (
         "Total: {:.4f}, Mel: {:.4f}, PostMel: {:.4f}, Pitch: {:.4f}, "
         "Energy: {:.4f}, Dur: {:.4f}, Style: {:.4f}, Flow: {:.4f}, Soft0: {:.4f}"
-    ).format(*losses_)
+    ).format(*loss_means_)
     
     if logger is not None:
         fig, wav_reconstruction, wav_prediction, tag, style_attn = synth_one_sample(
