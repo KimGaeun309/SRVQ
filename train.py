@@ -328,7 +328,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     dataset_full,
                     batch_size=batch_size,
                     shuffle=False,
-                    num_workers=os.cpu_count(),
+                    num_workers=os.cpu_count() // 3,
                     collate_fn=dataset_full.collate_fn,
                 )   
 
