@@ -3,25 +3,15 @@ import json
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 
-# from .text2style_aligner import Text2Style_Aligner
+from .style_predictor_flow import StylePredictorFlow
 
-# # Flow style predictor
-# from .style_predictor import StylePredictor, LinearNorm
-from .style_predictor_flow import StylePredictorFlowMultiStage
-from .style_predictor import LinearNorm
 from .transformers.transformer import Encoder, Decoder #, MelDecoder, LightMelDecoder
 from .transformers.layers import PostNet
 from .modules import VarianceAdaptor, SinusoidalPositionalEmbedding
 from utils.tools import get_mask_from_lengths
 from text.symbols import symbols
-# from .residual_vq_gaeun import ReferenceEncoderSRVQ3, SRVQ3WithNeutralization # 수정
-from .residual_vq_gaeun import ReferenceEncoder_cls, ResidualVQ_kmeans
-# from .residuaal_vq import SRVQPyworld, ResidualVQ
-
-from .gst.style_encoder import StyleEncoder, GST_VQ
 
 from typing import Optional
 
@@ -60,7 +50,7 @@ class FastSpeech2(nn.Module):
         # neu_vec = np.load(neu_path).astype("float32").squeeze()          # [256]
 
         
-        dim = model_config["residual_vq"]["vq_hidden"] * model_config["residual_vq"]["num_rvq"]
+        dim = model_config["residual_vq"]["vq_hidden"] # 256 # * model_config["residual_vq"]["num_rvq"]
         neu_vec = torch.randn(dim) * 0.02                      # 표준편차는 필요시 조정
 
         # self.neu_base = nn.Parameter(neu_vec, requires_grad=True)  
@@ -83,90 +73,23 @@ class FastSpeech2(nn.Module):
                 n_emotion,
                 model_config["transformer"]["encoder_hidden"],
             )
-        # GST
-        if model_config["gst"]["use_gst"]:
-            self.gst = StyleEncoder(
-                idim=model_config["gst"]["n_mel_channels"],
-                gst_tokens=model_config["gst"]["gst_tokens"],
-                gst_token_dim=model_config["gst"]["gst_token_dim"],
-                gst_heads=model_config["gst"]["gst_heads"],
-                conv_layers=model_config["gst"]["gst_conv_layers"],
-                conv_chans_list=model_config["gst"]["gst_conv_chans_list"],
-                conv_kernel_size=model_config["gst"]["gst_conv_kernel_size"],
-                conv_stride=model_config["gst"]["gst_conv_stride"],
-                gru_layers=model_config["gst"]["gst_gru_layers"],
-                gru_units=model_config["gst"]["gst_gru_units"],
-            )
-
-        # GST_VQ
-        if model_config["gst"]["use_gst_vq"]:
-            self.gst_vq = GST_VQ(
-                idim=model_config["gst"]["n_mel_channels"],
-                gst_tokens=model_config["gst"]["gst_tokens"],
-                gst_token_dim=model_config["gst"]["gst_token_dim"],
-                gst_heads=model_config["gst"]["gst_heads"],
-                conv_layers=model_config["gst"]["gst_conv_layers"],
-                conv_chans_list=model_config["gst"]["gst_conv_chans_list"],
-                conv_kernel_size=model_config["gst"]["gst_conv_kernel_size"],
-                conv_stride=model_config["gst"]["gst_conv_stride"],
-                gru_layers=model_config["gst"]["gst_gru_layers"],
-                gru_units=model_config["gst"]["gst_gru_units"],
-                vq_n_e=n_speaker+n_emotion,
-            )
-
-        # Style module
-        self.ref_enc = ReferenceEncoder_cls(
-            idim=model_config["residual_vq"]["n_mel_channels"],
-            conv_layers=model_config["residual_vq"]["rvq_conv_layers"],
-            conv_chans_list=model_config["residual_vq"]["rvq_conv_chans_list"],
-            conv_kernel_size=model_config["residual_vq"]["rvq_conv_kernel_size"],
-            conv_stride=model_config["residual_vq"]["rvq_conv_stride"],
-            gru_layers=model_config["residual_vq"]["rvq_gru_layers"],
-            gru_units=model_config["residual_vq"]["rvq_gru_units"],
-            e_dim=model_config["residual_vq"]["vq_hidden"],
-        )
-        self.style_extractor = ResidualVQ_kmeans(
-            n_e=n_emotion,
-            e_dim=model_config["residual_vq"]["vq_hidden"],
-            num_vq=model_config["residual_vq"]["num_rvq"],
-        )
-
-        self.style_extract_fc = LinearNorm(
-            model_config["residual_vq"]["vq_hidden"]*model_config["residual_vq"]["num_rvq"],
-            model_config["residual_vq"]["vq_hidden"]
-        )
-        self.style_pred_fc = LinearNorm(
-            model_config["residual_vq"]["vq_hidden"]*model_config["residual_vq"]["num_rvq"],
-            model_config["residual_vq"]["vq_hidden"]
-        )
 
         # __init__ 안
         sp_cfg = model_config.get("style_predictor", {})
-        self.style_predictor = StylePredictorFlowMultiStage(
-            n_stages=model_config["residual_vq"]["num_rvq"],
+        self.style_predictor = StylePredictorFlow(
             dim_text=model_config["transformer"]["encoder_hidden"],
             dim_tag=(self.emotion_emb.embedding_dim if self.emotion_emb is not None else model_config["transformer"]["encoder_hidden"]),
-            dim_neu=(model_config["residual_vq"]["vq_hidden"]),
-            dim_style=model_config["residual_vq"]["vq_hidden"],
+            dim_neu=model_config["residual_vq"]["vq_hidden"],   # 256
+            dim_style=model_config["residual_vq"]["vq_hidden"], # 256
             hidden=sp_cfg.get("hidden", model_config["style_predictor"]["hidden"]),
             dropout=0.1,
             use_transformer_block=False,
             nhead=2,
             nlayers=1,
-            # ▼ 새 파라미터(없으면 기본값)
             noise_k_train=sp_cfg.get("noise_k_train", 0.1),
             noise_k_infer=sp_cfg.get("noise_k_infer", 0.0),
         )
 
-        # self.cross_attn = Text2Style_Aligner(
-        #     num_layers=2,
-        #     hidden_size=256,
-        # )
-
-        # self.text2style_alignment = Text2Style_Aligner(
-        #     num_layers=2,
-        #     hidden_size=256,
-        # )
 
         self.padding_idx = len(symbols) + 1
 
@@ -195,10 +118,11 @@ class FastSpeech2(nn.Module):
         p_control=1.0,
         e_control=1.0,
         d_control=1.0,
+        ser_embs=None,
         step=None,
         inference=False,
         intensity=1.0,
-        did_x0_init=False,
+        # did_x0_init=False,
         # pitch_mel=None,
         # energy_mel=None,
         # init_flag=False,
@@ -217,6 +141,14 @@ class FastSpeech2(nn.Module):
             output = output + self.speaker_emb(speakers).unsqueeze(1).expand(
                 -1, max_src_len, -1
             )
+
+        # ser_embs: [B,256] expected
+        if ser_embs is not None:
+            if isinstance(ser_embs, np.ndarray):
+                ser_embs = torch.from_numpy(ser_embs)
+            ser_embs = ser_embs.to(device=output.device, dtype=output.dtype)
+            if ser_embs.dim() == 1:
+                ser_embs = ser_embs.unsqueeze(0)  # [1,256]
 
         # =========================
         # Style module (fusion predictor)
@@ -243,47 +175,14 @@ class FastSpeech2(nn.Module):
         # neu_emb = self.neu_base.expand(B, -1).contiguous()  # [B,256]    
         # # neu_emb = self.neu_base.expand(B, -1).to(dtype=output.dtype)  # device는 생략 가능
 
-
+        # Training mode
         if not inference:
-            # --------------------------
-            # Style extractor (레퍼런스 기반 RVQ) - 기존 그대로
-            # --------------------------
-            if self.model_config["gst"]["use_gst"]:
-                ref_embs = self.gst(mels)
-                style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
-            else:
-                
-                # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, emotions=emotions)
-                ref_embs, cls_loss = self.ref_enc(mels, emotions=emotions)
-                # if init_flag:
-                #     # kmeans_init !!!!
-                #     # self.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs)
-                #     cls_loss = None
-                style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(ref_embs, cls_loss) 
-                # style_ref_embs, vq_loss, min_encoding_indices, codebooks = self.style_extractor(mels, p_targets=p_targets, d_targets=d_targets, e_targets=e_targets)
-
-                # if init_flag:
-                #     self.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256])
-                #     self.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs - style_ref_embs[:, :256] - style_ref_embs[:, 256:512])
-                    
-            orig_style_ref_embs = style_ref_embs
-
-
+            if ser_embs is None:
+                 raise ValueError("ser_embs is required for training (SER target).")
+                 
             t_end_train  = float(self.model_config["style_predictor"].get("t_end_train", 1.0))
             steps_train  = int(self.model_config["style_predictor"].get("steps_train", 2))
 
-            # # 기본 타깃은 style_ref_embs
-            # target_style_for_flow = style_ref_embs.detach().to(output.dtype)
-
-            # # neutral이면 neu_emb로 치환
-            # if self.neutral_id is not None:
-            #     neutral_mask = (emotions == self.neutral_id)  # [B]
-            #     if neutral_mask.any():
-            #         # float dtype 일치
-            #         neu = neu_emb.to(style_ref_embs.dtype)
-            #         # style_ref_embs: [B, 256 * n_stages] 에 대해 복사
-            #         style_ref_embs = style_ref_embs.clone()
-            #         style_ref_embs[neutral_mask] = neu[neutral_mask]
             # --------------------------
             # (B) Rectified Flow predictor  →  style_pred_embs & flow_loss
             # --------------------------
@@ -291,52 +190,27 @@ class FastSpeech2(nn.Module):
             if self.neutral_id is not None:
                 neutral_mask = (emotions == self.neutral_id)  # [B]
 
-            
+            style_ref_embs = ser_embs  # [B,256]
+
+
             style_pred_embs, flow_loss, soft_zero_loss = self.style_predictor(
-                text_enc=output,                 # [B,T,256]
-                style_tag_emb=style_tag_emb,     # [B,256]
-#                spk_emb=spk_emb,                 # [B,256] or None
-                neu_emb=neu_cond,            # [D]  ← 추가: x0로 사용
-                text_mask=text_mask,             # [B,T] bool
-                target_style=style_ref_embs.detach(),  # x1 supervision: [B,256]
+                text_enc=output,
+                style_tag_emb=style_tag_emb,
+                neu_emb=neu_cond,            # [B,256]
+                text_mask=text_mask,
+                target_style=style_ref_embs.detach(),
                 return_loss=True,
                 t_end=t_end_train,
                 steps=steps_train,
                 neutral_mask=neutral_mask,
             )
-
             orig_style_pred_embs = style_pred_embs
 
-            
-
-            # # RVQ stage 수에 맞게 복제 
-            # if self.model_config["residual_vq"]["num_rvq"] == 4:
-            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq4
-            # elif self.model_config["residual_vq"]["num_rvq"] == 3:
-            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs, style_pred_embs], dim=1) # vq3
-            # elif self.model_config["residual_vq"]["num_rvq"] == 2:
-            #     style_pred_embs = torch.cat([style_pred_embs, style_pred_embs], dim=1) # vq2
-            
-            style_pred_embs = self.style_pred_fc(style_pred_embs) # [16, 256*3] -> [16 ,256]
-
-            # self.style_extract_fc : 256*3 -> 256 Linear Layer
-
-            # output shape : [16, 86, 256] / style_ref_embs shape : [16, 256]
-
-            style_ref_embs = self.style_extract_fc(style_ref_embs) 
-            # [B, 256 * n_stages] -> [B, 256]
-
-            # if did_x0_init and step >= 350000:
-            #     output = output + style_pred_embs.unsqueeze(1)
-            #     # codebooks 구성 (num_rvq == 3 가정)
-            #     z1, z2, z3 = torch.split(orig_style_pred_embs, 256, dim=1)
-            #     codebooks = [z1, z2, z3, z1+z2+z3]
-            # else:
             output = output + style_ref_embs.unsqueeze(1)
 
-            # positions = self.embed_positions(style_ref_embs.unsqueeze(1)[:, :, 0])
-            # prosody_embedding = style_ref_embs.unsqueeze(1) + positions
-
+            vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None
+            
+        # Inference mode
         else:
             style_ref_embs, vq_loss, min_encoding_indices, orig_style_ref_embs = None, None, None, None
 
@@ -348,48 +222,20 @@ class FastSpeech2(nn.Module):
             style_pred_embs = self.style_predictor(
                 text_enc=output,
                 style_tag_emb=style_tag_emb,
-                neu_emb=neu_cond,                     # [B,256]
+                neu_emb=neu_cond,
                 text_mask=text_mask,
                 t_end=t_end_infer,
                 steps=self.model_config["style_predictor"].get("steps_infer", 1),
             )  # [B,256]
 
             orig_style_pred_embs = style_pred_embs
-
-
-            # codebooks 구성 (num_rvq == 3 가정)
-            z1, z2, z3 = torch.split(style_pred_embs, 256, dim=1)
-            codebooks = [z1, z2, z3, z1+z2+z3]
-
-            # # neutral이면 강제로 neu_emb 사용
-            # if self.neutral_id is not None:
-            #     neutral_mask = (emotions == self.neutral_id)    # [B]
-            #     if neutral_mask.any():
-            #         style_pred_embs = style_pred_embs.clone()
-            #         style_pred_embs[neutral_mask] = neu_emb[neutral_mask]  
-
-            
-            style_pred_embs = self.style_pred_fc(style_pred_embs)
-
             output = output + style_pred_embs.unsqueeze(1)
-            # positions = self.embed_positions(style_pred_embs.unsqueeze(1)[:, :, 0])
-            # prosody_embedding = style_pred_embs.unsqueeze(1) + positions
 
             flow_loss = torch.tensor(0.0, device=device)
             soft_zero_loss = torch.tensor(0.0, device=device)
 
-        # src_key_padding_mask = output[:, :, 0].eq(self.padding_idx).data
-        # prosody_key_padding_mask = prosody_embedding[:, :, 0].eq(self.padding_idx).data
-
-        # # Text2style_alignment
-        # t2s_align, guided_loss_2, attn_emo_list = self.text2style_alignment(
-        #     output.transpose(0, 1),
-        #     prosody_embedding.transpose(0, 1),
-        #     src_key_padding_mask,
-        #     prosody_key_padding_mask
-        # )
-        # output = output + t2s_align.transpose(0, 1)
-
+        # =========================
+    
         # Variance Adaptor
         (
             output,
@@ -411,12 +257,6 @@ class FastSpeech2(nn.Module):
             e_control,
             d_control,
         )
-
-        # # Decoder
-        # if self.model_config["residual_vq"]["num_rvq"] == 3:
-        #     output, mel_masks = self.decoder(output, mel_masks, codebooks) # vq3
-        # else:
-        #     output, mel_masks = self.decoder(output, mel_masks) # vq2, vq4
 
         output, mel_masks = self.decoder(output, mel_masks)
         output = self.mel_linear(output)

@@ -76,10 +76,11 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, losses=Non
             loss_means.append(loss_sum / len(dataset))
             loss_means_.append(loss_sum / len(dataset))
 
-    message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style Loss: {:.4f}, guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}, flow_loss: {:.4f}, neu_align_loss: {:.4f}, soft_zero_loss: {:.4f}".format( 
-        *([step] + [l for l in loss_means_])
-    )
-
+    message2 = (
+        "Total: {:.4f}, Mel: {:.4f}, PostMel: {:.4f}, Pitch: {:.4f}, "
+        "Energy: {:.4f}, Dur: {:.4f}, Style: {:.4f}, Flow: {:.4f}, Soft0: {:.4f}"
+    ).format(*losses_)
+    
     if logger is not None:
         fig, wav_reconstruction, wav_prediction, tag, style_attn = synth_one_sample(
             batch,

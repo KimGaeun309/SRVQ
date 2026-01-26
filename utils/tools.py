@@ -47,7 +47,6 @@ def to_device(data, device):
             energies,
             durations,
         ) = data
-
         speakers = torch.from_numpy(speakers).long().to(device)
         emotions = torch.from_numpy(emotions).long().to(device)
         texts = torch.from_numpy(texts).long().to(device)
@@ -72,6 +71,52 @@ def to_device(data, device):
             pitches,
             energies,
             durations,
+        )
+
+    if len(data) == 14:
+        (
+            ids,
+            raw_texts,
+            speakers,
+            emotions,
+            texts,
+            src_lens,
+            max_src_len,
+            mels,
+            mel_lens,
+            max_mel_len,
+            pitches,
+            energies,
+            durations,
+            ser_embs,
+        ) = data
+        speakers = torch.from_numpy(speakers).long().to(device)
+        emotions = torch.from_numpy(emotions).long().to(device)
+        texts = torch.from_numpy(texts).long().to(device)
+        src_lens = torch.from_numpy(src_lens).to(device)
+        mels = torch.from_numpy(mels).float().to(device)
+        mel_lens = torch.from_numpy(mel_lens).to(device)
+        pitches = torch.from_numpy(pitches).float().to(device)
+        energies = torch.from_numpy(energies).to(device)
+        durations = torch.from_numpy(durations).long().to(device)
+
+        ser_embs = torch.from_numpy(ser_embs).float().to(device)  # (B,D)
+
+        return (
+            ids,
+            raw_texts,
+            speakers,
+            emotions,
+            texts,
+            src_lens,
+            max_src_len,
+            mels,
+            mel_lens,
+            max_mel_len,
+            pitches,
+            energies,
+            durations,
+            ser_embs,
         )
 
     if len(data) == 7:
@@ -108,10 +153,9 @@ def log(
         logger.add_scalar("Loss/energy_loss", losses[4], step)
         logger.add_scalar("Loss/duration_loss", losses[5], step)
         logger.add_scalar("Loss/style_loss", losses[6], step) 
-        logger.add_scalar("Loss/guide_loss", losses[7], step)
-        logger.add_scalar("Loss/vq_loss", losses[8], step)
-        logger.add_scalar("Loss/cls_loss(indices)", losses[9], step)
-        logger.add_scalar("Loss, recon_loss", losses[10], step)
+        logger.add_scalar("Loss/flow_loss", losses[7], step)
+        logger.add_scalar("Loss/soft_zero_loss", losses[8], step)
+
 
     if fig is not None:
         logger.add_figure(tag, fig)
@@ -182,14 +226,7 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
         mel_masks,
         src_lens,
         mel_lens,
-        _, 
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        *rest,
+        *_,
     ) = test_output
 
     basename = ids[0]
@@ -266,10 +303,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
         style_pred_embs,
         guided_loss,
         vq_loss,
-        _, 
-        _,
-        _,
-        *rest,
+        *_,
     ) = predictions
 
     for i in range(len(predictions[0])):

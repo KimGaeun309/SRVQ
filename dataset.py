@@ -27,6 +27,7 @@ class Dataset(Dataset):
             self.emotion_map = json.load(f)
         self.sort = sort
         self.drop_last = drop_last
+        self.ser_emb_dir = os.path.join(self.preprocessed_path, "ser_emb")
 
     def __len__(self):
         return len(self.text)
@@ -64,6 +65,13 @@ class Dataset(Dataset):
         )
         duration = np.load(duration_path)
 
+        ser_path = os.path.join(self.ser_emb_dir, f"{basename}.npy")
+        ser_emb = np.load(ser_path)  # shape: (D,) 또는 (1,D)일 수도 있음
+
+        ser_emb = np.asarray(ser_emb, dtype=np.float32)
+        if ser_emb.ndim == 2 and ser_emb.shape[0] == 1:
+            ser_emb = ser_emb[0]     # (D,)로 flatten
+
         sample = {
             "id": basename,
             "speaker": speaker_id,
@@ -74,6 +82,7 @@ class Dataset(Dataset):
             "pitch": pitch,
             "energy": energy,
             "duration": duration,
+            "ser_emb": ser_emb,
         }
 
         return sample
@@ -117,7 +126,7 @@ class Dataset(Dataset):
         pitches = pad_1D(pitches)
         energies = pad_1D(energies)
         durations = pad_1D(durations)
-
+ㄴ
         return (
             ids,
             raw_texts,
@@ -132,6 +141,7 @@ class Dataset(Dataset):
             pitches,
             energies,
             durations,
+            ser_embs,
         )
 
     def collate_fn(self, data):
