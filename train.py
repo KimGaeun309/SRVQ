@@ -26,6 +26,8 @@ import random
 import numpy as np
 import torch
 
+torch.backends.cudnn.enabled = False
+
 def set_all_seeds(seed=1234):
     random.seed(seed)
     np.random.seed(seed)
@@ -169,6 +171,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 batch = to_device(batch, device)
                 basenames = batch[0]
      
+
                 with amp.autocast(args.use_amp):
                     # Forward
                     output = model(*(batch[2:]), step=step, inference=False) # To do Step
