@@ -26,6 +26,8 @@ import random
 import numpy as np
 import torch
 
+torch.backends.cudnn.enabled = False
+
 def set_all_seeds(seed=1234):
     random.seed(seed)
     np.random.seed(seed)

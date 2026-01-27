@@ -12,7 +12,7 @@ hifigan/
 output/
 pretrained_models/
 dhs_output/
-__pychche__/
+__pycache__/
 *.pyc
 output/__pycache__/
-*.pyc
+*/*.pyc
