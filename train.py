@@ -304,11 +304,11 @@ def train(rank, args, configs, batch_size, num_gpus):
                             },
                             os.path.join(
                                 train_config["path"]["ckpt_path"],
-                                "{}_fs2-flow.pth.tar".format(step),
+                                "{}_fs2-flow-ser.pth.tar".format(step),
                             ),
                         )
-                        print("Save checkpoint at step {}_fs2-flow.pth.tar".format(step))
-
+                        print("Save checkpoint at step {}_fs2-flow-ser.pth.tar".format(step))
+    
                 if step == total_step:
                     train = False
                     break
