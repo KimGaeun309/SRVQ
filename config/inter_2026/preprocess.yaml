@@ -1,8 +1,8 @@
 dataset: "icassp_2024"
 
 path:
-  corpus_path: "/media/gaeun/fee580d1-6954-462b-bdaf-3b8ccc4254311/data/015.Emotion_and_Style_TTS"
-  raw_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_data/emo_kr_22050"
+  corpus_path: "/mnt/hdd/Datasets.emo_kr_22050"
+  raw_path: "/mnt/hdd/Datasets.emo_kr_22050"
   preprocessed_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050"
   mfa_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_data/emo_kr_22050_mfa"
   curr_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop"
