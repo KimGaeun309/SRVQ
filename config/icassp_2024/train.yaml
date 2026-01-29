@@ -4,9 +4,9 @@ dist_config:
   dist_url: "tcp://localhost:54321"
   world_size: 1
 path:
-  ckpt_path: "./output/ckpt/icassp_2024"
-  log_path: "./output/log/icassp_2024"
-  result_path: "./output/result/icassp_2024"
+  ckpt_path: "/mnt/hdd/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/output/ckpt/icassp_2024"
+  log_path: "/mnt/hdd/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/output/log/icassp_2024"
+  result_path: "/mnt/hdd/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/output/result/icassp_2024"
 optimizer:
   batch_size: 32
   betas: [0.9, 0.98]
