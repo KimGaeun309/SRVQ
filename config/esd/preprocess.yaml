@@ -2,7 +2,7 @@ dataset: "esd"
 
 path:
   corpus_path: "/mnt/hdd/Datasets/ESD"
-  raw_path: "/root/mydir/ICASSP2024_FS2-develop/Datasets/ESD"
+  raw_path: "/mnt/hdd/Datasets/ESD"
   preprocessed_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd"
   mfa_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd/mfa/aligned_arpa"
 
