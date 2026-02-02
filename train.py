@@ -75,7 +75,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     model, optimizer = get_model(args, configs, device, train=True)
     if num_gpus > 1:
         model = DistributedDataParallel(model, device_ids=[rank], find_unused_parameters=True).to(device)
-    scaler = amp.GradScaler(enabled=args.use_amp)
+    # scaler = amp.GradScaler(enabled=args.use_amp)
     Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
 
     # Load vocoder
@@ -113,42 +113,31 @@ def train(rank, args, configs, batch_size, num_gpus):
     train = True
 
     model.train()
-
+    optimizer.zero_grad()
     while train:
         if rank == 0:
             inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
         if num_gpus > 1:
             data_sampler.set_epoch(epoch)
         for batchs in loader:
-            if train == False:
+            if not train:
                 break
             for batch in batchs:
                 batch = to_device(batch, device)
-            
-                basenames = batch[0]
-     
-                with amp.autocast(args.use_amp):
-                    # Forward
-                    output = model(*(batch[2:]), inference=False) # To do Step
 
-                    # Cal Loss
-                    losses = Loss(batch, output) # To do Step
-                    total_loss = losses[0]
-                    total_loss = total_loss / grad_acc_step
+                output = model(*(batch[2:]), inference=False) # To do Step
+                losses = Loss(batch, output) # To do Step
+                total_loss = losses[0]
+                total_loss = total_loss / grad_acc_step
+                total_loss.backward()
 
-                # Backward
-                scaler.scale(total_loss).backward()
-
-                # Clipping gradients to avoid gradient explosion
                 if step % grad_acc_step == 0:
-                    scaler.unscale_(optimizer._optimizer)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)                    
+                    optimizer.update_learning_rate()
+                    optimizer.step()
+                    optimizer.zero_grad()
+            
 
-                # Update weightss
-                optimizer.step_and_update_lr(scaler)
-                scaler.update()
-                optimizer.zero_grad()
-                        
                 if rank == 0:
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
@@ -157,9 +146,6 @@ def train(rank, args, configs, batch_size, num_gpus):
                             ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
                             *losses_
                         )
-
-                        # if losses[9].item() < 0.3 and step > 200000:
-                        #     classifier_loss_small = True
 
                         with open(os.path.join(train_log_path, "log.txt"), "a") as f:
                             f.write(message1 + message2 + "\n")
@@ -244,7 +230,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 if __name__ == "__main__":
     assert torch.cuda.is_available(), 'CPU training is not allowed.'
     parser = argparse.ArgumentParser()
-    parser.add_argument('--use_amp', action='store_true')
+    # parser.add_argument('--use_amp', action='store_true', default=False)
     parser.add_argument('--restore_step', type=str, default=0)
     parser.add_argument(
         '--dataset',
@@ -266,7 +252,7 @@ if __name__ == "__main__":
 
     # Log Configuration
     print("\n==================================== Training Configuration ====================================")
-    print(' ---> Automatic Mixed Precision:', args.use_amp)
+    # print(' ---> Automatic Mixed Precision:', args.use_amp)
     print(' ---> Number of used GPU:', num_gpus)
     print(' ---> Batch size per GPU:', batch_size)
     print(' ---> Batch size in total:', batch_size * num_gpus)
