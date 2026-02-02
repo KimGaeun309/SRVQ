@@ -6,22 +6,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-# from .text2style_aligner import Text2Style_Aligner
-
-# # Flow style predictor
-# from .style_predictor import StylePredictor, LinearNorm
-from .style_predictor_flow import StylePredictorFlowMultiStage
-from .style_predictor import LinearNorm
 from .transformers.transformer import Encoder, Decoder #, MelDecoder, LightMelDecoder
 from .transformers.layers import PostNet
 from .modules import VarianceAdaptor, SinusoidalPositionalEmbedding
 from utils.tools import get_mask_from_lengths
 from text.symbols import symbols
-# from .residual_vq_gaeun import ReferenceEncoderSRVQ3, SRVQ3WithNeutralization # 수정
-from .residual_vq_gaeun import ReferenceEncoder_cls, ResidualVQ_kmeans
-# from .residuaal_vq import SRVQPyworld, ResidualVQ
-
-from .gst.style_encoder import StyleEncoder, GST_VQ
 
 from typing import Optional
 
@@ -70,36 +59,13 @@ class FastSpeech2(nn.Module):
                 n_emotion,
                 model_config["transformer"]["encoder_hidden"],
             )
-        # GST
-        if model_config["gst"]["use_gst"]:
-            self.gst = StyleEncoder(
-                idim=model_config["gst"]["n_mel_channels"],
-                gst_tokens=model_config["gst"]["gst_tokens"],
-                gst_token_dim=model_config["gst"]["gst_token_dim"],
-                gst_heads=model_config["gst"]["gst_heads"],
-                conv_layers=model_config["gst"]["gst_conv_layers"],
-                conv_chans_list=model_config["gst"]["gst_conv_chans_list"],
-                conv_kernel_size=model_config["gst"]["gst_conv_kernel_size"],
-                conv_stride=model_config["gst"]["gst_conv_stride"],
-                gru_layers=model_config["gst"]["gst_gru_layers"],
-                gru_units=model_config["gst"]["gst_gru_units"],
-            )
 
-        # GST_VQ
-        if model_config["gst"]["use_gst_vq"]:
-            self.gst_vq = GST_VQ(
-                idim=model_config["gst"]["n_mel_channels"],
-                gst_tokens=model_config["gst"]["gst_tokens"],
-                gst_token_dim=model_config["gst"]["gst_token_dim"],
-                gst_heads=model_config["gst"]["gst_heads"],
-                conv_layers=model_config["gst"]["gst_conv_layers"],
-                conv_chans_list=model_config["gst"]["gst_conv_chans_list"],
-                conv_kernel_size=model_config["gst"]["gst_conv_kernel_size"],
-                conv_stride=model_config["gst"]["gst_conv_stride"],
-                gru_layers=model_config["gst"]["gst_gru_layers"],
-                gru_units=model_config["gst"]["gst_gru_units"],
-                vq_n_e=n_speaker+n_emotion,
-            )
+        hidden_dim = model_config["transformer"]["encoder_hidden"]
+        self.intensity_proj = nn.Linear(1, hidden_dim)
+
+        # (권장) 초기에는 intensity 영향 거의 0으로 시작시키고 싶으면
+        nn.init.zeros_(self.intensity_proj.weight)
+        nn.init.zeros_(self.intensity_proj.bias)
 
         self.padding_idx = len(symbols) + 1
 
@@ -109,8 +75,6 @@ class FastSpeech2(nn.Module):
             self.padding_idx,
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
-        self.neutral_id: Optional[int] = sp_cfg.get("neutral_id", None)
-
 
     def forward(
         self,
@@ -128,13 +92,8 @@ class FastSpeech2(nn.Module):
         p_control=1.0,
         e_control=1.0,
         d_control=1.0,
-        step=None,
+        intensity=None,
         inference=False,
-        intensity=1.0,
-        did_x0_init=False,
-        # pitch_mel=None,
-        # energy_mel=None,
-        # init_flag=False,
     ):
         
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
@@ -151,23 +110,27 @@ class FastSpeech2(nn.Module):
                 -1, max_src_len, -1
             )
 
-        # =========================
-        # Style module (fusion predictor)
-        # =========================
+            # Add emotion category condition
+        if self.emotion_emb is not None:
+            output = output + self.emotion_emb(emotions).unsqueeze(1).expand(
+                -1, max_src_len, -1
+            )
 
-        # style tag / speaker emb 준비
-        style_tag_emb = self.emotion_emb(emotions) if self.emotion_emb is not None else None  # [B, D_tag]
-        # spk_emb = self.speaker_emb(speakers) if self.speaker_emb is not None else None        # [B, D_spk] or None
+        # Add intensity condition (RA)
+        if intensity is None:
+            # 학습 시 intensity 미제공이면 0으로 처리 (안전장치)
+            intensity = torch.zeros((output.size(0), 1), device=output.device, dtype=output.dtype)
+        else:
+            if not torch.is_tensor(intensity):
+                intensity = torch.tensor(intensity, device=output.device)
+            if intensity.dim() == 1:
+                intensity = intensity.unsqueeze(1)  # (B,1)
+            intensity = intensity.to(device=output.device, dtype=output.dtype)
 
-        # text mask (True=pad). src_lens 기준으로 정확히 생성
-        B, T, _ = output.shape
-        device = output.device
-        ar = torch.arange(T, device=device).unsqueeze(0)     # [1,T]
-        text_mask = ar >= src_lens.unsqueeze(1)              # [B,T]  True=pad
-
-        guided_loss_1 = torch.tensor(0.0, device=device)     # cross-attn 대신 
-
-
+        inten = self.intensity_proj(intensity)               # (B, D)
+        inten = inten.unsqueeze(1).expand(-1, max_src_len, -1)  # (B, T, D)
+        output = output + inten
+        
         # Variance Adaptor
         (
             output,
@@ -202,10 +165,6 @@ class FastSpeech2(nn.Module):
         # Post-net
         postnet_output = self.postnet(output) + output
 
-        # Loss
-        guided_loss = guided_loss_1
-        attn_emo_list = None
-
         return (
             output,
             postnet_output,
@@ -217,14 +176,4 @@ class FastSpeech2(nn.Module):
             mel_masks,
             src_lens,
             mel_lens,
-            style_ref_embs,
-            style_pred_embs,
-            guided_loss,
-            vq_loss,
-            flow_loss, # Edit!
-            soft_zero_loss, # Edit!
-            min_encoding_indices,
-            orig_style_ref_embs, # Edit!
-            neu_base_for_loss, # Edit!
-            orig_style_pred_embs,
         )

@@ -31,6 +31,56 @@ def get_decode_config(dataset):
     return decode_config
 
 def to_device(data, device):
+    # ===== train batch with intensity =====
+    if len(data) == 14:
+        (
+            ids,
+            raw_texts,
+            speakers,
+            emotions,
+            texts,
+            src_lens,
+            max_src_len,
+            mels,
+            mel_lens,
+            max_mel_len,
+            pitches,
+            energies,
+            durations,
+            intensities,
+        ) = data
+
+        speakers = torch.from_numpy(speakers).long().to(device)
+        emotions = torch.from_numpy(emotions).long().to(device)
+        texts = torch.from_numpy(texts).long().to(device)
+
+        src_lens = torch.from_numpy(src_lens).long().to(device)
+        mel_lens = torch.from_numpy(mel_lens).long().to(device)
+
+        mels = torch.from_numpy(mels).float().to(device)
+        pitches = torch.from_numpy(pitches).float().to(device)
+        energies = torch.from_numpy(energies).float().to(device)
+        durations = torch.from_numpy(durations).long().to(device)
+
+        intensities = torch.from_numpy(intensities).float().to(device)  # (B,)
+
+        return (
+            ids,
+            raw_texts,
+            speakers,
+            emotions,
+            texts,
+            src_lens,
+            max_src_len,
+            mels,
+            mel_lens,
+            max_mel_len,
+            pitches,
+            energies,
+            durations,
+            intensities,
+        )
+
     if len(data) == 13:
         (
             ids,
@@ -182,14 +232,7 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
         mel_masks,
         src_lens,
         mel_lens,
-        _, 
-        _,
-        _,
-        _,
-        _,
-        _,
-        _,
-        *rest,
+        *_,
     ) = test_output
 
     basename = ids[0]
@@ -198,7 +241,6 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
     mel_target = mels[0, :mel_len].detach().transpose(0, 1)
     mel_prediction = postnet_output[0, :mel_len].detach().transpose(0, 1)
     duration = durations[0, :src_len].detach().cpu().numpy()
-    style_attn = None
 
     if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
         pitch = pitches[0, :src_len].detach().cpu().numpy()
@@ -244,7 +286,7 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
     else:
         wav_reconstruction = wav_prediction = None
 
-    return fig, wav_reconstruction, wav_prediction, basename, style_attn
+    return fig, wav_reconstruction, wav_prediction, basename
 
 
 def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path, args):
@@ -262,14 +304,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
         mel_masks,
         src_lens,
         mel_lens,
-        style_embs,
-        style_pred_embs,
-        guided_loss,
-        vq_loss,
-        _, 
-        _,
-        _,
-        *rest,
+        *_,
     ) = predictions
 
     for i in range(len(predictions[0])):

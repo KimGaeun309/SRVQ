@@ -18,9 +18,8 @@ class Dataset(Dataset):
         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
         self.batch_size = train_config["optimizer"]["batch_size"]
 
-        self.basename, self.speaker, self.emotion, self.text, self.raw_text = self.process_meta(
-            filename
-        )
+        self.basename, self.speaker, self.emotion, self.text, self.raw_text, self.intensity = self.process_meta(filename)
+
         with open(os.path.join(self.preprocessed_path, "speakers.json")) as f:
             self.speaker_map = json.load(f)
         with open(os.path.join(self.preprocessed_path, "emotions.json")) as f:
@@ -38,6 +37,7 @@ class Dataset(Dataset):
         emotion = self.emotion[idx]
         emotion_id = self.emotion_map[emotion]
         raw_text = self.raw_text[idx]
+        intensity = self.intensity[idx]
         phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
         mel_path = os.path.join(
             self.preprocessed_path,
@@ -74,27 +74,28 @@ class Dataset(Dataset):
             "pitch": pitch,
             "energy": energy,
             "duration": duration,
+            "intensity": intensity,
         }
 
         return sample
 
     def process_meta(self, filename):
-        with open(
-            os.path.join(self.preprocessed_path, filename), "r", encoding="utf-8"
-        ) as f:
-            name = []
-            speaker = []
-            emotion = []
-            text = []
-            raw_text = []
-            for line in f.readlines():
-                n, s, e, t, r = line.strip("\n").split("|")
+        with open(os.path.join(self.preprocessed_path, filename), "r", encoding="utf-8") as f:
+            name, speaker, emotion, text, raw_text, intensity = [], [], [], [], [], []
+            for line in f:
+                parts = line.strip().split("|")
+                if len(parts) == 6:
+                    n, s, e, t, r, inten = parts
+                    intensity.append(float(inten))
+                else:
+                    n, s, e, t, r = parts
+                    intensity.append(0.0)   # fallback
                 name.append(n)
                 speaker.append(s)
                 emotion.append(e)
                 text.append(t)
                 raw_text.append(r)
-            return name, speaker, emotion, text, raw_text
+            return name, speaker, emotion, text, raw_text, intensity
 
     def reprocess(self, data, idxs):
         ids = [data[idx]["id"] for idx in idxs]
@@ -106,6 +107,8 @@ class Dataset(Dataset):
         pitches = [data[idx]["pitch"] for idx in idxs]
         energies = [data[idx]["energy"] for idx in idxs]
         durations = [data[idx]["duration"] for idx in idxs]
+        intensities = [data[idx]["intensity"] for idx in idxs]
+        intensities = np.array(intensities, dtype=np.float32)
 
         text_lens = np.array([text.shape[0] for text in texts])
         mel_lens = np.array([mel.shape[0] for mel in mels])
@@ -132,6 +135,7 @@ class Dataset(Dataset):
             pitches,
             energies,
             durations,
+            intensities,
         )
 
     def collate_fn(self, data):

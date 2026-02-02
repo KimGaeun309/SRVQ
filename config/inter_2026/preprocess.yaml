@@ -1,11 +1,11 @@
 dataset: "icassp_2024"
 
 path:
-  corpus_path: "/mnt/hdd/Datasets.emo_kr_22050"
-  raw_path: "/mnt/hdd/Datasets.emo_kr_22050"
-  preprocessed_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/emo_kr_22050"
-  mfa_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/raw_data/emo_kr_22050_mfa"
-  curr_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop"
+  corpus_path: "/mnt/hdd/Datasets/emo_kr_22050"
+  raw_path: "/mnt/hdd/Datasets/emo_kr_22050"
+  preprocessed_path: "./preprocessed_data/emo_kr_22050"
+  mfa_path: "./raw_data/emo_kr_22050_mfa"
+  curr_path: "."
 
 preprocessing:
   val_size: 2000

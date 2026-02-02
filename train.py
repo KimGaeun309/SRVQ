@@ -57,7 +57,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
     # Get Dataset
     dataset = Dataset(
-        "train.txt", preprocess_config, train_config, sort=True, drop_last=True
+        "train_ra.txt", preprocess_config, train_config, sort=True, drop_last=True
     )
     data_sampler = DistributedSampler(dataset) if num_gpus > 1 else None
     group_size = 4 # Set this larger than 1 to enable sorting in Dataset
@@ -93,7 +93,6 @@ def train(rank, args, configs, batch_size, num_gpus):
     save_step = train_config["step"]["save_step"]
     synth_step = train_config["step"]["synth_step"]
     val_step = train_config["step"]["val_step"]
-    extractor_only_step = train_config["step"]["extractor_only_step"]
 
     if rank == 0:
         print("Number of FastSpeech2 Parameters: {}\n".format(get_param_num(model)))
@@ -112,52 +111,10 @@ def train(rank, args, configs, batch_size, num_gpus):
         outer_bar.update()
 
     train = True
-    did_x0_init = False
-    # classifier_loss_small = Fals
 
     model.train()
 
     while train:
-        # # === NEW: style predictor freeze/unfreeze ===
-        # if not did_x0_init:
-        #     # freeze predictor
-        #     if hasattr(model, "module"):
-        #         for p in model.module.style_predictor.parameters():
-        #             p.requires_grad = False
-        #     else:
-        #         for p in model.style_predictor.parameters():
-        #             p.requires_grad = False
-        # else:
-        #     # unfreeze predictor
-        #     if hasattr(model, "module"):
-        #         for p in model.module.style_predictor.parameters():
-        #             p.requires_grad = True
-        #     else:
-        #         for p in model.style_predictor.parameters():
-        #             p.requires_grad = True
-        # # ============================================
-        fs2 = model.module if hasattr(model, "module") else model
-
-        # Phase1: extractor only => predictor freeze
-        if step < extractor_only_step:
-            for p in fs2.style_predictor.parameters():
-                p.requires_grad = False
-        else:
-            for p in fs2.style_predictor.parameters():
-                p.requires_grad = True
-
-        # # Phase3+: extractor freeze (ref_enc + style_extractor)
-        # if step >= extractor_only_step + 50000: # 350000 step 이후 style extractor freeze
-        #     for p in fs2.ref_enc.parameters():
-        #         p.requires_grad = False
-        #     for p in fs2.style_extractor.parameters():
-        #         p.requires_grad = False
-        # else:
-        #     for p in fs2.ref_enc.parameters():
-        #         p.requires_grad = True
-        #     for p in fs2.style_extractor.parameters():
-        #         p.requires_grad = True
-
         if rank == 0:
             inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
         if num_gpus > 1:
@@ -167,15 +124,15 @@ def train(rank, args, configs, batch_size, num_gpus):
                 break
             for batch in batchs:
                 batch = to_device(batch, device)
-                
+            
                 basenames = batch[0]
      
                 with amp.autocast(args.use_amp):
                     # Forward
-                    output = model(*(batch[2:]), step=step, inference=False, did_x0_init=did_x0_init) # To do Step
+                    output = model(*(batch[2:]), inference=False) # To do Step
 
                     # Cal Loss
-                    losses = Loss(batch, output, step=step) # To do Step
+                    losses = Loss(batch, output) # To do Step
                     total_loss = losses[0]
                     total_loss = total_loss / grad_acc_step
 
@@ -191,53 +148,12 @@ def train(rank, args, configs, batch_size, num_gpus):
                 optimizer.step_and_update_lr(scaler)
                 scaler.update()
                 optimizer.zero_grad()
-
-                # if did_x0_init:
-
-                #     if hasattr(model, "module"):
-                #         fs2 = model.module
-                #     else:
-                #         fs2 = model
-
-                #     emotions = batch[3]                      # (B,)
-                #     orig_style_ref_embs = output[16]          # 필요 없으면 제거 가능
-                #     indices_list = output[15]                 # [(B,1), (B,1), (B,1)]
-                #                                             # ⚠️ 실제 output index 맞게 조정
-
-                #     neutral_mask = (emotions == fs2.neutral_id)
-
-                #     if neutral_mask.any():
-
-                #         from collections import Counter
-
-                #         stage_vecs = []
-
-                #         for s in range(3):  # VQ1, VQ2, VQ3
-                #             idx_all = indices_list[s][neutral_mask].view(-1)  # (N_neu,)
-
-                #             # batch 내 최빈 index
-                #             mode_idx = Counter(idx_all.tolist()).most_common(1)[0][0]
-
-                #             # codebook lookup
-                #             vec = fs2.style_extractor.vq_layers[s].embedding.weight[mode_idx]
-                #             stage_vecs.append(vec)
-
-                #         # concat → (1, 768)
-                #         batch_neu_vec = torch.cat(stage_vecs, dim=0).unsqueeze(0)
-                #         batch_neu_vec = batch_neu_vec.to(fs2.neu_base.device, fs2.neu_base.dtype)
-
-                #         # EMA
-                #         alpha0 = 3e-2
-                #         alpha = alpha0 / (step ** 0.3)
-
-                #         with torch.no_grad():
-                #             fs2.neu_base.mul_(1.0 - alpha).add_(alpha * batch_neu_vec)
                         
                 if rank == 0:
                     if step % log_step == 0:
                         losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                         message1 = "Step {}/{}, ".format(step, total_step)
-                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, Style_loss: {:.4f}, Guided_loss: {:.4f}, vq_loss: {:.4f}, cls_loss(indices): {:.4f}, flow_loss: {:.4f}, neu_align_loss: {:.4f}, soft_zero_loss: {:.4f}".format( 
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format( 
                             ### " 주석 - utils/tools 에도 주석 , evaluate.py에도 주석, tools.py에도 주석
                             *losses_
                         )
@@ -254,7 +170,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                     if step % synth_step == 0:
                         model.eval()
-                        fig, wav_reconstruction, wav_prediction, tag, style_attn = synth_one_sample(
+                        fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
                             batch,
                             model,
                             vocoder,
@@ -285,7 +201,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                     if step % val_step == 0:
                         torch.cuda.empty_cache()
                         model.eval()
-                        message, cls_loss_val = evaluate(device, model, step, configs, val_logger, vocoder, losses)
+                        message = evaluate(device, model, step, configs, val_logger, vocoder)
 
                         with open(os.path.join(val_log_path, "log.txt"), "a") as f:
                             f.write(message + "\n")
@@ -301,10 +217,10 @@ def train(rank, args, configs, batch_size, num_gpus):
                             },
                             os.path.join(
                                 train_config["path"]["ckpt_path"],
-                                "{}_2stage.pth.tar".format(step),
+                                "{}_ra.pth.tar".format(step),
                             ),
                         )
-                        print("Save checkpoint at step {}_2stage.pth.tar".format(step))
+                        print("Save checkpoint at step {}_ra.pth.tar".format(step))
 
                 if step == total_step:
                     train = False
@@ -315,193 +231,6 @@ def train(rank, args, configs, batch_size, num_gpus):
 
             if rank == 0:
                 inner_bar.update(1)
-        
-        if epoch == 1:
-            print("[INIT] Warm-up finished. Running K-means initialization ...")
-
-            with torch.no_grad():
-                # --- 1. 전체 train 데이터셋에서 ref_emb / style vector 수집 ---               
-                dataset_full = Dataset(
-                    "train.txt", preprocess_config, train_config, sort=False, drop_last=False
-                )
-                loader_full = DataLoader(
-                    dataset_full,
-                    batch_size=batch_size,
-                    shuffle=False,
-                    num_workers=os.cpu_count(),
-                    collate_fn=dataset_full.collate_fn,
-                )   
-
-                ref_embs_all, styles_all, emotions_all = [], [], []
-
-                for batchs in tqdm(loader_full, desc="[INIT] Extracting ref_embs for K-means"):
-                    for batch in batchs:
-                        batch = to_device(batch, device)
-                        
-                        mel = batch[7]
-                        emotions = batch[3]
-
-                        # === FAST PATH: ref_enc + RVQ only ===
-                        ref_emb, cls_loss = model.ref_enc(mel, emotions)
-                        style, vq_loss, min_idx, codebooks = model.style_extractor(ref_emb, cls_loss)
-
-                        ref_embs_all.append(ref_emb)
-                        styles_all.append(style)
-                        emotions_all.append(emotions)
-
-                ref_embs_all = torch.cat(ref_embs_all, dim=0)
-                styles_all = torch.cat(styles_all, dim=0)
-                emotions_all = torch.cat(emotions_all, dim=0)
-                torch.cuda.empty_cache()
-
-                # --- 2. RVQ K-means initialization ---
-                print("[INIT] Performing K-means initialization for RVQ codebooks...")
-                fs2 = model.module if hasattr(model, "module") else model
-                # ref_embs_all: [N, 768] = [N, 256*3]
-                
-                # RVQ 3단계 초기화
-                fs2.style_extractor.vq_layers[0].init_codebook_kmeans(ref_embs_all)
-                fs2.style_extractor.vq_layers[1].init_codebook_kmeans(ref_embs_all - styles_all[:, :256])
-                fs2.style_extractor.vq_layers[2].init_codebook_kmeans(ref_embs_all - styles_all[:, :256] - styles_all[:, 256:512])
-
-
-        # dead code update
-        if epoch > 1 and step < extractor_only_step:
-            # val_path =  '/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd/train.txt'
-            val_path = preprocess_config["path"]["preprocessed_path"] + "/train.txt"
-
-            with open(val_path, encoding='utf-8') as f:
-                val_infos = [line.strip().split("|") for line in f]
-
-            import json
-
-            with open(preprocess_config["path"]["preprocessed_path"] + "/emotions.json") as f:
-                emotion_map = json.load(f)
-                n_emotions = len(emotion_map)
-                print("Number of emotions:", n_emotions)
-
-            val_basenames = []
-            emotions = []
-            styles = []
-            ref_embs = []
-
-            for i in range(len(val_infos)):
-                if i % 25 != 0:
-                    continue
-                val_info = val_infos[i]
-
-                basename = val_info[0]
-                speaker  = val_info[1]   # ★ 이걸 써야 함
-                emotion  = val_info[2]
-
-                val_basenames.append((basename, speaker))
-                emotions.append(emotion_map[emotion])
-                        
-            for i in range(len(val_basenames)):
-                val_basename, speaker = val_basenames[i]
-                emotion = torch.tensor(emotions[i], device=device).unsqueeze(0)
-
-                mel_path = os.path.join(
-                    preprocess_config["path"]["preprocessed_path"],
-                    "mel",
-                    f"{speaker}-mel-{val_basename}.npy"
-                )
-
-                mel = np.load(mel_path)
-                mel = torch.from_numpy(mel).float().to(device).unsqueeze(0)
-
-                ref_emb, cls_loss = model.ref_enc(mel, emotion)
-                style, _, _, codebooks = model.style_extractor(ref_emb, cls_loss)
-
-                ref_embs.append(ref_emb)
-                styles.append(style)
-
-            ref_embs = torch.cat(ref_embs, dim=0)
-            styles = torch.cat(styles, dim=0)
-            
-            torch.cuda.empty_cache()
-
-
-            if model.style_extractor.vq_layers[0].dead_codes_count() < (n_emotions/2):
-                model.style_extractor.vq_layers[0].greedy_restart()
-            else:
-                model.style_extractor.vq_layers[0].reset_dead_codes_kmeans(ref_embs)
-            if model.style_extractor.vq_layers[1].dead_codes_count() < (n_emotions/2):
-                model.style_extractor.vq_layers[1].greedy_restart()
-            else:
-                model.style_extractor.vq_layers[1].reset_dead_codes_kmeans(ref_embs - styles[:, :256])
-            if model.style_extractor.vq_layers[2].dead_codes_count() < (n_emotions/2):
-                model.style_extractor.vq_layers[2].greedy_restart()
-            else:
-                model.style_extractor.vq_layers[2].reset_dead_codes_kmeans(ref_embs - styles[:, :256] - styles[:, 256:512])
-
-        # if not did_x0_init:
-        if step >= extractor_only_step and not did_x0_init:
-            with torch.no_grad():
-                fs2 = model.module if hasattr(model, "module") else model
-
-                # === 1. 전체 데이터를 돌며 neutral index를 stage별로 수집 ===
-                dataset_full = Dataset("train.txt", preprocess_config, train_config,
-                                    sort=False, drop_last=False)
-                loader_full = DataLoader(dataset_full, batch_size=batch_size,
-                                        shuffle=False, num_workers=os.cpu_count(),
-                                        collate_fn=dataset_full.collate_fn)
-
-                neutral_indices_stage = [[], [], []]   # stage1, stage2, stage3
-
-                for batchs in tqdm(loader_full, desc="[INIT] Collect neutral code indices"):
-                    for batch in batchs:
-                        batch = to_device(batch, device)
-                        mel = batch[7]
-                        emotions = batch[3]
-
-                        ref_emb, cls_loss = fs2.ref_enc(mel, emotions)
-                        _, _, indices_list, codebooks_list = fs2.style_extractor(ref_emb, cls_loss)
-                        # indices_list = [ (B,1), (B,1), (B,1) ]
-
-                        neu_mask = (emotions == fs2.neutral_id)
-                        if neu_mask.any():
-                            for s in range(3):
-                                idx_tensor = indices_list[s][neu_mask]  # (k,1)
-                                for idx in idx_tensor:
-                                    neutral_indices_stage[s].append(int(idx.item()))
-
-                # === 2. stage별 most frequent index 구하기 ===
-                from collections import Counter
-                stage_mode_idx = []
-                for s in range(3):
-                    if len(neutral_indices_stage[s]) == 0:
-                        print(f"[INIT][WARN] stage {s+1}: no neutral codes found")
-                        stage_mode_idx.append(0)  # fallback
-                    else:
-                        c = Counter(neutral_indices_stage[s])
-                        stage_mode_idx.append(c.most_common(1)[0][0])
-
-                print("[INIT] mode indices:", stage_mode_idx)
-
-                with open(os.path.join(train_log_path, "log.txt"), "a") as f:
-                    f.write(
-                        f"[INIT] mode indices: {stage_mode_idx}, step: {step}, epoch: {epoch}\n")
-
-                # === 3. codebook에서 vector 가져와 concat ===
-                stage_vecs = []
-                for s in range(3):
-                    idx = stage_mode_idx[s]
-                    vec = fs2.style_extractor.vq_layers[s].embedding.weight[idx]  # (256,)
-                    stage_vecs.append(vec)
-
-                neutral_vec = torch.cat(stage_vecs, dim=0).unsqueeze(0)   # (1,768)
-
-                # === 4. neu_base에 복사 ===
-                fs2.neu_base.data.copy_(neutral_vec.to(fs2.neu_base.device,
-                                                    dtype=fs2.neu_base.dtype))
-
-                print(f"[INIT] x0(neu_base) initialized with mode neutral codebook vector.")
-                
-            # if classifier_loss_small:
-            #     with open(os.path.join(train_log_path, "log.txt"), "a") as f:
-            #         f.write(f"[CLASSIFIER LOSS SMALL] did_x0_init = True \n")
-                did_x0_init = True
 
         epoch += 1
 
