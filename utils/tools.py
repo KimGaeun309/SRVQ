@@ -157,11 +157,6 @@ def log(
         logger.add_scalar("Loss/pitch_loss", losses[3], step)
         logger.add_scalar("Loss/energy_loss", losses[4], step)
         logger.add_scalar("Loss/duration_loss", losses[5], step)
-        logger.add_scalar("Loss/style_loss", losses[6], step) 
-        logger.add_scalar("Loss/guide_loss", losses[7], step)
-        logger.add_scalar("Loss/vq_loss", losses[8], step)
-        logger.add_scalar("Loss/cls_loss(indices)", losses[9], step)
-        logger.add_scalar("Loss, recon_loss", losses[10], step)
 
     if fig is not None:
         logger.add_figure(tag, fig)
@@ -218,7 +213,8 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
         max_mel_lens,
         pitches,
         energies,
-        durations
+        durations,
+        intensities,
     ) = batch
 
     (
