@@ -5,7 +5,7 @@ import librosa
 import torch
 import numpy as np
 import torch.nn as nn
-from torch.cuda import amp
+# from torch.cuda import amp
 import torch.multiprocessing as mp
 from torch.utils.tensorboard import SummaryWriter
 from torch.distributed import init_process_group
@@ -77,7 +77,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     model, optimizer = get_model(args, configs, device, train=True)
     if num_gpus > 1:
         model = DistributedDataParallel(model, device_ids=[rank], find_unused_parameters=True).to(device)
-    scaler = amp.GradScaler(enabled=args.use_amp)
+    # scaler = amp.GradScaler(enabled=args.use_amp)
     Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
 
     # Load vocoder
@@ -118,6 +118,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     # classifier_loss_small = Fals
 
     model.train()
+    optimizer.zero_grad()
 
     while train:
         # # === NEW: style predictor freeze/unfreeze ===
@@ -165,34 +166,24 @@ def train(rank, args, configs, batch_size, num_gpus):
         if num_gpus > 1:
             data_sampler.set_epoch(epoch)
         for batchs in loader:
-            if train == False:
+            if not train:
                 break
             for batch in batchs:
                 batch = to_device(batch, device)
                 basenames = batch[0]
-     
 
-                with amp.autocast(args.use_amp):
-                    # Forward
-                    output = model(*(batch[2:]), step=step, inference=False) # To do Step
-
-                    # Cal Loss
-                    losses = Loss(batch, output, step=step) # To do Step
-                    total_loss = losses[0]
-                    total_loss = total_loss / grad_acc_step
-
-                # Backward
-                scaler.scale(total_loss).backward()
+                output = model(*(batch[2:]), step=step, inference=False) # To do Step
+                losses = Loss(batch, output, step=step) # To do Step
+                total_loss = losses[0]
+                total_loss = total_loss / grad_acc_step
+                total_loss.backward()
 
                 # Clipping gradients to avoid gradient explosion
                 if step % grad_acc_step == 0:
-                    scaler.unscale_(optimizer._optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
-
-                # Update weightss
-                optimizer.step_and_update_lr(scaler)
-                scaler.update()
-                optimizer.zero_grad()
+                    optimizer.update_learning_rate()
+                    optimizer.step()
+                    optimizer.zero_grad()
 
                 # if did_x0_init:
 
@@ -391,7 +382,7 @@ def train(rank, args, configs, batch_size, num_gpus):
 if __name__ == "__main__":
     assert torch.cuda.is_available(), 'CPU training is not allowed.'
     parser = argparse.ArgumentParser()
-    parser.add_argument('--use_amp', action='store_true')
+    # parser.add_argument('--use_amp', action='store_true')
     parser.add_argument('--restore_step', type=str, default=0)
     parser.add_argument(
         '--dataset',
@@ -413,7 +404,7 @@ if __name__ == "__main__":
 
     # Log Configuration
     print("\n==================================== Training Configuration ====================================")
-    print(' ---> Automatic Mixed Precision:', args.use_amp)
+    # print(' ---> Automatic Mixed Precision:', args.use_amp)
     print(' ---> Number of used GPU:', num_gpus)
     print(' ---> Batch size per GPU:', batch_size)
     print(' ---> Batch size in total:', batch_size * num_gpus)
