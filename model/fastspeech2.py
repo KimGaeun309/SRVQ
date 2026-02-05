@@ -71,8 +71,6 @@ class FastSpeech2(nn.Module):
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
 
-        self.sf_scale = 1.0
-
     def forward(
         self,
         speakers,
@@ -86,7 +84,7 @@ class FastSpeech2(nn.Module):
         p_targets=None,
         e_targets=None,
         d_targets=None,
-        intensities=None,
+        intensity=None,
         p_control=1.0,
         e_control=1.0,
         d_control=1.0,
@@ -109,9 +107,19 @@ class FastSpeech2(nn.Module):
             )
 
         # Add emotion category condition
-
         emo = self.emotion_emb(emotions)
-        emo = self.sf_scale * emo
+        if not inference or intensity is None:
+            scale = torch.ones(
+                (emo.size(0), 1), device=emo.device, dtype=emo.dtype
+            )
+        else:
+            if not torch.is_tensor(intensity):
+                intensity = torch.tensor(intensity, device=emo.device)
+            if intensity.dim() == 1:
+                intensity = intensity.unsqueeze(1)  # (B,1)
+            scale = intensity.to(dtype=emo.dtype)   # (B,1)
+
+        emo = scale * emo
         output = output + emo.unsqueeze(1).expand(
             -1, max_src_len, -1
         )
