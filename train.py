@@ -203,10 +203,10 @@ def train(rank, args, configs, batch_size, num_gpus):
                             },
                             os.path.join(
                                 train_config["path"]["ckpt_path"],
-                                "{}_ra.pth.tar".format(step),
+                                "{}_se.pth.tar".format(step),
                             ),
                         )
-                        print("Save checkpoint at step {}_ra.pth.tar".format(step))
+                        print("Save checkpoint at step {}_se.pth.tar".format(step))
 
                 if step == total_step:
                     train = False

@@ -61,11 +61,6 @@ class FastSpeech2(nn.Module):
             )
 
         hidden_dim = model_config["transformer"]["encoder_hidden"]
-        self.intensity_proj = nn.Linear(1, hidden_dim)
-
-        # (권장) 초기에는 intensity 영향 거의 0으로 시작시키고 싶으면
-        nn.init.zeros_(self.intensity_proj.weight)
-        nn.init.zeros_(self.intensity_proj.bias)
 
         self.padding_idx = len(symbols) + 1
 
@@ -75,6 +70,8 @@ class FastSpeech2(nn.Module):
             self.padding_idx,
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
+
+        self.sf_scale = 1.0
 
     def forward(
         self,
@@ -89,10 +86,11 @@ class FastSpeech2(nn.Module):
         p_targets=None,
         e_targets=None,
         d_targets=None,
+        intensities=None,
         p_control=1.0,
         e_control=1.0,
         d_control=1.0,
-        intensity=None,
+        
         inference=False,
     ):
         
@@ -110,27 +108,14 @@ class FastSpeech2(nn.Module):
                 -1, max_src_len, -1
             )
 
-            # Add emotion category condition
-        if self.emotion_emb is not None:
-            output = output + self.emotion_emb(emotions).unsqueeze(1).expand(
-                -1, max_src_len, -1
-            )
+        # Add emotion category condition
 
-        # Add intensity condition (RA)
-        if intensity is None:
-            # 학습 시 intensity 미제공이면 0으로 처리 (안전장치)
-            intensity = torch.zeros((output.size(0), 1), device=output.device, dtype=output.dtype)
-        else:
-            if not torch.is_tensor(intensity):
-                intensity = torch.tensor(intensity, device=output.device)
-            if intensity.dim() == 1:
-                intensity = intensity.unsqueeze(1)  # (B,1)
-            intensity = intensity.to(device=output.device, dtype=output.dtype)
+        emo = self.emotion_emb(emotions)
+        emo = self.sf_scale * emo
+        output = output + emo.unsqueeze(1).expand(
+            -1, max_src_len, -1
+        )
 
-        inten = self.intensity_proj(intensity)               # (B, D)
-        inten = inten.unsqueeze(1).expand(-1, max_src_len, -1)  # (B, T, D)
-        output = output + inten
-        
         # Variance Adaptor
         (
             output,
