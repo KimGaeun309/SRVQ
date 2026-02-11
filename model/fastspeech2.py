@@ -124,6 +124,9 @@ class FastSpeech2(nn.Module):
         else:
             if not torch.is_tensor(intensity):
                 intensity = torch.tensor(intensity, device=output.device)
+            # scalar tensor (0D) 처리
+            if intensity.dim() == 0:
+                intensity = intensity.repeat(output.size(0), 1)  # (B,1)
             if intensity.dim() == 1:
                 intensity = intensity.unsqueeze(1)  # (B,1)
             intensity = intensity.to(device=output.device, dtype=output.dtype)
