@@ -115,6 +115,8 @@ class FastSpeech2(nn.Module):
         else:
             if not torch.is_tensor(intensity):
                 intensity = torch.tensor(intensity, device=emo.device)
+            if intensity.dim() == 0:
+                intensity = intensity.repeat(output.size(0), 1)  # (B,1)
             if intensity.dim() == 1:
                 intensity = intensity.unsqueeze(1)  # (B,1)
             scale = intensity.to(dtype=emo.dtype)   # (B,1)
