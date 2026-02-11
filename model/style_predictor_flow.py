@@ -235,17 +235,25 @@ class StylePredictorFlow(nn.Module):
         noise = torch.randn_like(neu_emb) * sigma_eff    # 브로드캐스트로 [B,D]
         return neu_emb + noise
 
-    def _make_x0(self, neu_emb: Optional[torch.Tensor], k: float) -> torch.Tensor:
-        """
-        neu_emb가 있으면 relative noise로 x0 생성, 없으면 fallback 사용.
-        """
-        # if (neu_emb is not None) and (self.dim_neu > 0):
-        x0 = self._relative_noise(neu_emb, k=k)      # ★ 여기서 요청한 방식 적용
-        # else:
-        #     B = neu_emb.size(0) if neu_emb is not None else 1
-        #     base = self.fallback_base.expand(B, -1)
-        #     # fallback에는 절대 노이즈를 쓰지 않고 그대로 둠(원하면 필요 시 추가)
-        #     x0 = base
+    # def _make_x0(self, neu_emb: Optional[torch.Tensor], k: float) -> torch.Tensor:
+    #     """
+    #     neu_emb가 있으면 relative noise로 x0 생성, 없으면 fallback 사용.
+    #     """
+    #     # if (neu_emb is not None) and (self.dim_neu > 0):
+    #     x0 = self._relative_noise(neu_emb, k=k)      # ★ 여기서 요청한 방식 적용
+    #     # else:
+    #     #     B = neu_emb.size(0) if neu_emb is not None else 1
+    #     #     base = self.fallback_base.expand(B, -1)
+    #     #     # fallback에는 절대 노이즈를 쓰지 않고 그대로 둠(원하면 필요 시 추가)
+    #     #     x0 = base
+    #     return x0
+
+    def _make_x0(self, neu_emb, k):
+        B = neu_emb.size(0)
+        device = neu_emb.device
+        D = neu_emb.size(1)
+
+        x0 = torch.randn(B, D, device=device) * 0.02
         return x0
 
     def _euler_integrate_to(
