@@ -176,7 +176,10 @@ class FastSpeech2(nn.Module):
             self.padding_idx,
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
-        self.neutral_id: Optional[int] = sp_cfg.get("neutral_id", None)
+        with open(os.path.join(preprocess_config["path"]["preprocessed_path"], "emotions.json"), "r") as f:
+            emo_map = json.load(f)
+
+        self.neutral_id = int(emo_map["neu"])   # 여기서 4로 확정
 
 
     def forward(
