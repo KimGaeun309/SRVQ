@@ -117,6 +117,9 @@ def main():
     vocoder = get_vocoder(model_config, device)
     model.eval()
 
+    print("Loaded neu_base mean:", model.neu_base.mean().item())
+    print("Loaded neu_base std :", model.neu_base.std().item())
+
     # maps
     with open(os.path.join(preprocess_config["path"]["preprocessed_path"], "speakers.json")) as f:
         spk_map = json.load(f)

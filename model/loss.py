@@ -225,10 +225,12 @@ class FastSpeech2Loss(nn.Module):
                 if emb.numel() == 0:
                     continue
                 emb_for_triplet = emb.clone()
-                if neutral_mask.any():
-                    emb_for_triplet = emb_for_triplet.clone()
-                    # neutral 행만 detach
-                    emb_for_triplet[neutral_mask] = emb_for_triplet[neutral_mask].detach()
+                
+                # No detach of neutral ... 
+                # if neutral_mask.any():
+                #     emb_for_triplet = emb_for_triplet.clone()
+                #     # neutral 행만 detach
+                #     emb_for_triplet[neutral_mask] = emb_for_triplet[neutral_mask].detach()
 
                 anchor, positive, negative = create_triplet_samples(emb_for_triplet, emotions)
                 if anchor is not None:

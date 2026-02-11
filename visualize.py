@@ -86,7 +86,7 @@ if __name__ == "__main__":
     def run_tsne(data, perplexity=20, n_iter=2000):
         if data.shape[1] == 0:
             return None
-        tsne_model = TSNE(n_components=2, random_state=0, init='random', perplexity=perplexity, n_iter=n_iter)
+        tsne_model = TSNE(n_components=2, random_state=0, init='random', perplexity=perplexity, max_iter=n_iter)
         return tsne_model.fit_transform(data)
 
     tsne_1 = run_tsne(data_x_1)
