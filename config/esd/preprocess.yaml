@@ -3,8 +3,8 @@ dataset: "esd"
 path:
   corpus_path: "/mnt/hdd/Datasets/ESD"
   raw_path: "/mnt/hdd/Datasets/ESD"
-  preprocessed_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd"
-  mfa_path: "/root/mydir/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd/mfa/aligned_arpa"
+  preprocessed_path: "/workspace/kge/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd"
+  mfa_path: "/workspace/kge/ICASSP2024_FS2-develop/ICASSP2024_FS2-develop/preprocessed_data/esd/mfa/aligned_arpa"
 
 preprocessing:
   val_size: 2000
