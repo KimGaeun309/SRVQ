@@ -446,20 +446,28 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                 for batchs in tqdm(loader_full, desc="[INIT] Collect neutral code indices"):
                     for batch in batchs:
+                        # ... inside: for batch in batchs:
                         batch = to_device(batch, device)
                         mel = batch[7]
                         emotions = batch[3]
 
+                        # ✅ emotions를 무조건 Tensor로 만들기
+                        if not torch.is_tensor(emotions):
+                            emotions = torch.LongTensor(emotions)  # list/np/int 모두 대응
+                        emotions = emotions.to(device)
+
+                        # (선택) shape 보정: scalar면 (1,)로
+                        if emotions.dim() == 0:
+                            emotions = emotions.view(1)
+
                         ref_emb, cls_loss = fs2.ref_enc(mel, emotions)
                         _, _, indices_list, codebooks_list = fs2.style_extractor(ref_emb, cls_loss)
-                        # indices_list = [ (B,1), (B,1), (B,1) ]
 
-                        neu_mask = (emotions == fs2.neutral_id)
-                        if neu_mask.any():
+                        neu_mask = emotions.eq(fs2.neutral_id)  # Tensor mask
+                        if torch.any(neu_mask):
                             for s in range(3):
                                 idx_tensor = indices_list[s][neu_mask]  # (k,1)
-                                for idx in idx_tensor:
-                                    neutral_indices_stage[s].append(int(idx.item()))
+                                neutral_indices_stage[s].extend(idx_tensor.view(-1).tolist())
 
                 # === 2. stage별 most frequent index 구하기 ===
                 from collections import Counter
