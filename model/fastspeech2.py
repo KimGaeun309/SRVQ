@@ -99,10 +99,28 @@ class FastSpeech2(nn.Module):
             self.padding_idx,
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
-        with open(os.path.join(preprocess_config["path"]["preprocessed_path"], "emotions.json"), "r") as f:
+        # emotions.json 로드
+        with open(
+            os.path.join(preprocess_config["path"]["preprocessed_path"], "emotions.json"),
+            "r",
+        ) as f:
             emo_map = json.load(f)
 
-        self.neutral_id = int(emo_map["neu"])   # 여기서 4로 확정
+        # key 후보들 (대소문자 포함)
+        neutral_candidates = ["neu", "Neutral", "neutral", "NEU", "NEUTRAL"]
+
+        found = False
+        for k in neutral_candidates:
+            if k in emo_map:
+                self.neutral_id = int(emo_map[k])
+                found = True
+                break
+
+        if not found:
+            raise ValueError(
+                f"[ERROR] Neutral label not found in emotions.json. "
+                f"Available keys: {list(emo_map.keys())}"
+            )
 
 
     def forward(
