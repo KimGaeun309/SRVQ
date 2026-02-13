@@ -97,7 +97,7 @@ def train(rank, args, configs, batch_size, num_gpus):
     val_step = train_config["step"]["val_step"]
     extractor_only_step = train_config["step"]["extractor_only_step"]
 
-    SAVE_STEPS = {350000, 400000, 450000, 500000, 600000, 1000000}
+    SAVE_STEPS = {290000, 350000, 400000, 450000, 500000, 600000, 1000000}
 
     if rank == 0:
         print("Number of FastSpeech2 Parameters: {}\n".format(get_param_num(model)))
