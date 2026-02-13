@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "../../../.."
+		},
+		{
+			"path": "../../../../../../mnt/hdd"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true
+	}
+}

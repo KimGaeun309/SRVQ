@@ -94,6 +94,8 @@ def train(rank, args, configs, batch_size, num_gpus):
     synth_step = train_config["step"]["synth_step"]
     val_step = train_config["step"]["val_step"]
 
+    SAVE_STEPS = {350000, 400000, 450000, 500000, 600000, 1000000}
+
     if rank == 0:
         print("Number of FastSpeech2 Parameters: {}\n".format(get_param_num(model)))
         # Init Logger
@@ -195,7 +197,8 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                         model.train()
 
-                    if step % save_step == 0:
+                    # if step % save_step == 0:
+                    if step in SAVE_STEPS:
                         torch.save(
                             {
                                 "model": model.module.state_dict() if num_gpus > 1 else model.state_dict(),
