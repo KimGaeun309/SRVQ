@@ -345,7 +345,22 @@ def train(rank, args, configs, batch_size, num_gpus):
                             emotions = batch[3]      # (B,)
                             ser_embs = batch[13]     # (B,256)
 
-                            neu_mask = (emotions == fs2.neutral_id)
+                            # 🔒 안전 장치
+                            if not torch.is_tensor(emotions):
+                                emotions = torch.LongTensor(emotions)
+
+                            emotions = emotions.to(device)
+
+                            # scalar 방어
+                            if emotions.dim() == 0:
+                                emotions = emotions.view(1)
+
+                            # (B,1) → (B,)
+                            if emotions.dim() > 1:
+                                emotions = emotions.view(-1)
+
+                            neu_mask = emotions.eq(fs2.neutral_id)
+                            
                             if neu_mask.any():
                                 neu_vecs = ser_embs[neu_mask]  # (N,256)
 
