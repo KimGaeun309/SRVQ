@@ -16,3 +16,4 @@ __pycache__/
 utils/__pycache__/
 */*.pyc
 *.pyc
+*.code-workspace
