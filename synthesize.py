@@ -212,6 +212,23 @@ if __name__ == "__main__":
     # if args.mode == "single":
     #     assert args.source is None and args.text is not None 
 
+    # --------------------------------------------------
+    # dataset별 tool module 분기
+    # --------------------------------------------------
+    if args.dataset.lower() == "esd":
+        print("Using tools_16k (SpeechBrain HiFi-GAN)")
+        from utils.tools_16k import (
+            get_configs_of,
+            to_device,
+            synth_samples,
+        )
+    else:
+        print("Using default tools")
+        from utils.tools import (
+            get_configs_of,
+            to_device,
+            synth_samples,
+        )
 
     # Read Config
     preprocess_config, model_config, train_config = get_configs_of(args.dataset)
@@ -234,10 +251,11 @@ if __name__ == "__main__":
     # Load vocoder
     if args.dataset.lower() == "esd":
         print("Using SpeechBrain 16kHz HiFi-GAN for ESD")
-        
+
         vocoder = HIFIGAN.from_hparams(
             source="speechbrain/tts-hifigan-libritts-16kHz",
-            savedir="pretrained_models/tts-hifigan-libritts-16kHz"
+            savedir="pretrained_models/tts-hifigan-libritts-16kHz",
+            run_opts={"device": str(device)},
         )
         vocoder = vocoder.to(device)
         vocoder.eval()
