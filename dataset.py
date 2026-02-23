@@ -160,10 +160,10 @@ class Dataset(Dataset):
         return output
 
 class TextDatasetSingle(Dataset):
-    def __init__(self, preprocess_config, text, phonemes, speaker, emotion):
+    def __init__(self, preprocess_config, text, phonemes, speaker, emotion, intensity=1.0):
         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
 
-        self.basename, self.speaker, self.emotion, self.text, self.raw_text, self.intensity = ["싱글_"+speaker+'_'+emotion+'_'+text[:50]], [speaker], [emotion], [phonemes], [text], [1.0]
+        self.basename, self.speaker, self.emotion, self.text, self.raw_text, self.intensity = ["싱글_"+speaker+'_'+emotion+'_'+text[:50]], [speaker], [emotion], [phonemes], [text], [float(intensity)]
 
         with open(
             os.path.join(
@@ -193,26 +193,26 @@ class TextDatasetSingle(Dataset):
 
         return (basename, speaker_id, emotion_id, phone, raw_text, intensity)
 
-    def process_meta(self, filename):
-        with open(filename, "r", encoding="utf-8") as f:
-            name, speaker, emotion, text, raw_text, intensity = [], [], [], [], [], []
+    # def (self, filename):
+    #     with open(filename, "r", encoding="utf-8") as f:
+    #         name, speaker, emotion, text, raw_text, intensity = [], [], [], [], [], []
 
-            for line in f.readlines():
-                parts = line.strip().split("|")
+    #         for line in f.readlines():
+    #             parts = line.strip().split("|")
                 
-                if len(parts) == 6:
-                    n, s, e, t, r, inten = parts
-                    intensity.append(float(inten))
-                else:
-                    n, s, e, t, r = line.strip("\n").split("|")
-                    intensity.append(1.0)
+    #             if len(parts) == 6:
+    #                 n, s, e, t, r, inten = parts
+    #                 intensity.append(float(inten))
+    #             else:
+    #                 n, s, e, t, r = line.strip("\n").split("|")
+    #                 intensity.append(1.0)
 
-                name.append(n)
-                speaker.append(s)
-                emotion.append(e)
-                text.append(t)
-                raw_text.append(r)
-            return name, speaker, emotion, text, raw_text, intensity
+    #             name.append(n)
+    #             speaker.append(s)
+    #             emotion.append(e)
+    #             text.append(t)
+    #             raw_text.append(r)
+    #         return name, speaker, emotion, text, raw_text, intensity
 
     def collate_fn(self, data):
         ids = [d[0] for d in data]

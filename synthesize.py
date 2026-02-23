@@ -119,12 +119,16 @@ def synthesize(device, model, args, configs, vocoder, batchs, control_values):
         with torch.no_grad():
             # Forward
             output = model(
-                *(batch[2:]),
+                batch[2],
+                batch[3],
+                batch[4],
+                batch[5],
+                batch[6],
+                intensity=batch[7],
                 p_control=pitch_control,
                 e_control=energy_control,
                 d_control=duration_control,
                 inference=True,
-                intensity=args.intensity,  # 감정 강도 추가
             )
             synth_samples(
                 batch,
@@ -271,7 +275,7 @@ if __name__ == "__main__":
 
         print("phone", phone)
 
-        dataset = TextDatasetSingle(preprocess_config, raw_text, phone, speaker, emotion)
+        dataset = TextDatasetSingle(preprocess_config, raw_text, phone, speaker, emotion, intensity=args.intensity)
 
         batchs = DataLoader(
             dataset,

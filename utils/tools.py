@@ -134,6 +134,19 @@ def to_device(data, device):
 
         return (ids, raw_texts, speakers, emotions, texts, src_lens, max_src_len)
 
+    if len(data) == 8:
+        (ids, raw_texts, speakers, emotions, texts, src_lens, max_src_len, intensities) = data
+
+        speakers = torch.from_numpy(speakers).long().to(device)
+        emotions = torch.from_numpy(emotions).long().to(device)
+        texts = torch.from_numpy(texts).long().to(device)
+        src_lens = torch.from_numpy(src_lens).long().to(device)
+
+        # intensities: (B,) float
+        intensities = torch.from_numpy(intensities).float().to(device)
+
+        return (ids, raw_texts, speakers, emotions, texts, src_lens, max_src_len, intensities)
+
     if len(data) == 10:
         (ids, raw_texts, speakers, emotions, texts, src_lens, max_src_len, mel, mel_len, max_mel_len) = data
 
