@@ -11,7 +11,7 @@ from scipy.io import wavfile
 from matplotlib import pyplot as plt
 
 import torchaudio
-from speechbrain.inference.vocoders import HIFIGAN
+# from speechbrain.inference.vocoders import HIFIGAN
 
 matplotlib.use("Agg")
 
@@ -25,10 +25,10 @@ def load_emotion_id2name(preprocessed_path):
     return id2emo
 
 
-def get_speechbrain_hifigan():
-    # 16kHz HiFiGAN (SpeechBrain pretrained)
-    vocoder = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-16kHz", savedir="pretrained_models/tts-hifigan-libritts-16kHz")
-    return vocoder
+# def get_speechbrain_hifigan():
+#     # 16kHz HiFiGAN (SpeechBrain pretrained)
+#     vocoder = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-16kHz", savedir="pretrained_models/tts-hifigan-libritts-16kHz")
+#     return vocoder
 
 
 def speechbrain_vocode(vocoder, mel):
@@ -40,6 +40,8 @@ def speechbrain_vocode(vocoder, mel):
     """
     if mel.dim() == 2:
         mel = mel.unsqueeze(0)  # (1, 80, T)
+
+    mel = mel.to(vocoder.device)  # vocoder와 같은 device로 이동
 
     # ✅ SpeechBrain expects (B, 80, T) 그대로
     with torch.no_grad():
@@ -112,6 +114,7 @@ def _match_length_1d(x, T):
         return x[:T]
     pad = np.zeros((T - len(x),), dtype=x.dtype)
     return np.concatenate([x, pad], axis=0)
+
 def save_mel_compare_with_pe_png(
     gt_mel,
     pred_mel,
@@ -153,11 +156,22 @@ def save_mel_compare_with_pe_png(
 
     fig, axes = plt.subplots(1, 2, figsize=(16, 4))
 
-    def add_axis(fig, old_ax):
-        ax = fig.add_axes(old_ax.get_position(), anchor="W")
-        ax.set_facecolor("None")
-        return ax
+    def add_axis(old_ax, side="right", offset=0.0):
+        ax = old_ax.twinx()
 
+        if side == "left":
+            ax.spines["left"].set_position(("axes", -offset))
+            ax.spines["left"].set_visible(True)
+            ax.spines["right"].set_visible(False)
+            ax.yaxis.set_label_position("left")
+            ax.yaxis.tick_left()
+        else:
+            ax.spines["right"].set_position(("axes", 1.0 + offset))
+            ax.spines["right"].set_visible(True)
+            ax.spines["left"].set_visible(False)
+
+        return ax
+    
     # ---- GT ----
     axes[0].imshow(gt_mel, origin="lower", aspect="auto", vmin=vmin, vmax=vmax)
     axes[0].set_title(title_left, fontsize="medium")
@@ -165,29 +179,21 @@ def save_mel_compare_with_pe_png(
     axes[0].tick_params(labelsize="x-small", left=False, labelleft=False)
     axes[0].set_anchor("W")
 
-    ax1 = add_axis(fig, axes[0])
+    # ----- F0 (LEFT) -----
+    ax1 = add_axis(axes[0], side="left", offset=0.08)
     ax1.plot(gt_pitch_plot, color="tomato")
     ax1.set_xlim(0, Tgt)
     ax1.set_ylim(0, pitch_max * pitch_std + pitch_mean)
     ax1.set_ylabel("F0", color="tomato")
     ax1.tick_params(labelsize="x-small", colors="tomato", bottom=False, labelbottom=False)
 
-    ax2 = add_axis(fig, axes[0])
+    # ----- Energy (RIGHT) -----
+    ax2 = add_axis(axes[0], side="right", offset=0.0)
     ax2.plot(gt_energy, color="darkviolet")
     ax2.set_xlim(0, Tgt)
     ax2.set_ylim(energy_min, energy_max)
     ax2.set_ylabel("Energy", color="darkviolet")
-    ax2.yaxis.set_label_position("right")
-    ax2.tick_params(
-        labelsize="x-small",
-        colors="darkviolet",
-        bottom=False,
-        labelbottom=False,
-        left=False,
-        labelleft=False,
-        right=True,
-        labelright=True,
-    )
+    ax2.tick_params(labelsize="x-small", colors="darkviolet")
 
     # ---- Pred ----
     axes[1].imshow(pred_mel, origin="lower", aspect="auto", vmin=vmin, vmax=vmax)
@@ -196,36 +202,32 @@ def save_mel_compare_with_pe_png(
     axes[1].tick_params(labelsize="x-small", left=False, labelleft=False)
     axes[1].set_anchor("W")
 
-    ax1 = add_axis(fig, axes[1])
+    # ----- F0 (LEFT) -----
+    ax1 = add_axis(axes[1], side="left", offset=0.08)
     ax1.plot(pred_pitch_plot, color="tomato")
     ax1.set_xlim(0, Tpred)
     ax1.set_ylim(0, pitch_max * pitch_std + pitch_mean)
     ax1.set_ylabel("F0", color="tomato")
     ax1.tick_params(labelsize="x-small", colors="tomato", bottom=False, labelbottom=False)
 
-    ax2 = add_axis(fig, axes[1])
+    # ----- Energy (RIGHT) -----
+    ax2 = add_axis(axes[1], side="right", offset=0.0)
     ax2.plot(pred_energy, color="darkviolet")
     ax2.set_xlim(0, Tpred)
     ax2.set_ylim(energy_min, energy_max)
     ax2.set_ylabel("Energy", color="darkviolet")
-    ax2.yaxis.set_label_position("right")
-    ax2.tick_params(
-        labelsize="x-small",
-        colors="darkviolet",
-        bottom=False,
-        labelbottom=False,
-        left=False,
-        labelleft=False,
-        right=True,
-        labelright=True,
-    )
+    ax2.tick_params(labelsize="x-small", colors="darkviolet")
 
     # colorbar 하나만
-    fig.colorbar(axes[1].images[0], ax=axes, fraction=0.02, pad=0.02)
+    # fig.colorbar(axes[1].images[0], ax=axes, fraction=0.02, pad=0.02)
+    # ===== colorbar 전용 axis =====
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.015, 0.7])
+    fig.colorbar(axes[1].images[0], cax=cbar_ax)
 
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.savefig(out_path)
     plt.close()
+
 
 def get_configs_of(dataset):
     config_dir = os.path.join("./config", dataset)
@@ -439,7 +441,7 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
         stats,
         ["Synthetized Spectrogram", "Ground-Truth Spectrogram"],
     )
-    vocoder = get_speechbrain_hifigan()
+    # vocoder = get_speechbrain_hifigan()
     wav_reconstruction = speechbrain_vocode(vocoder,  mel_target)
     wav_prediction = speechbrain_vocode(vocoder, mel_prediction)
 
@@ -495,7 +497,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
     
     os.makedirs(path, exist_ok=True)
 
-    vocoder = get_speechbrain_hifigan()
+    # vocoder = get_speechbrain_hifigan()
 
     for i in range(len(predictions[0])):
         basename = basenames[i]

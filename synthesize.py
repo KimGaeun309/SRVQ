@@ -11,13 +11,15 @@ from g2p_en import G2p
 from pypinyin import pinyin, Style
 
 from utils.model import get_model, get_vocoder
-from utils.tools import get_configs_of, to_device, synth_samples
+# from utils.tools import get_configs_of, to_device, synth_samples
 from dataset import TextDataset, TextDatasetSingle
 from text import text_to_sequence
 from text.korean import tokenize, normalize_nonchar
 
 import time
 import json
+
+from speechbrain.inference.vocoders import HIFIGAN
 
 def read_lexicon(lex_path):
     lexicon = {}
@@ -212,6 +214,24 @@ if __name__ == "__main__":
     #     assert args.source is None and args.text is not None 
 
 
+    # --------------------------------------------------
+    # dataset별 tool module 분기
+    # --------------------------------------------------
+    if args.dataset.lower() == "esd":
+        print("Using tools_16k (SpeechBrain HiFi-GAN)")
+        from utils.tools_16k import (
+            get_configs_of,
+            to_device,
+            synth_samples,
+        )
+    else:
+        print("Using default tools")
+        from utils.tools import (
+            get_configs_of,
+            to_device,
+            synth_samples,
+        ) 
+
     # Read Config
     preprocess_config, model_config, train_config = get_configs_of(args.dataset)
     configs = (preprocess_config, model_config, train_config)
@@ -231,7 +251,20 @@ if __name__ == "__main__":
     model = get_model(args, configs, device, train=False)
 
     # Load vocoder
-    vocoder = get_vocoder(model_config, device)
+    # vocoder = get_vocoder(model_config, device)
+    if args.dataset.lower() == "esd":
+        print("Using SpeechBrain 16kHz HiFi-GAN for ESD")
+        
+        vocoder = HIFIGAN.from_hparams(
+            source="speechbrain/tts-hifigan-libritts-16kHz",
+            savedir="pretrained_models/tts-hifigan-libritts-16kHz",
+            run_opts={"device": str(device)},
+        )
+        vocoder = vocoder.to(device)
+        vocoder.eval()
+
+    else:
+        vocoder = get_vocoder(model_config, device)
 
     # Preprocess texts
     if args.mode == "batch":
