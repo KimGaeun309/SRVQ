@@ -11,7 +11,7 @@ from scipy.io import wavfile
 from matplotlib import pyplot as plt
 
 import torchaudio
-from speechbrain.inference.vocoders import HIFIGAN
+# from speechbrain.inference.vocoders import HIFIGAN
 
 matplotlib.use("Agg")
 
@@ -25,10 +25,14 @@ def load_emotion_id2name(preprocessed_path):
     return id2emo
 
 
-def get_speechbrain_hifigan():
-    # 16kHz HiFiGAN (SpeechBrain pretrained)
-    vocoder = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-libritts-16kHz", savedir="pretrained_models/tts-hifigan-libritts-16kHz")
-    return vocoder
+# def get_speechbrain_hifigan(device):
+#     vocoder = HIFIGAN.from_hparams(
+#         source="speechbrain/tts-hifigan-libritts-16kHz",
+#         savedir="pretrained_models/tts-hifigan-libritts-16kHz"
+#     )
+#     vocoder = vocoder.to(device)
+#     vocoder.eval()
+#     return vocoder
 
 
 def speechbrain_vocode(vocoder, mel):
@@ -40,6 +44,9 @@ def speechbrain_vocode(vocoder, mel):
     """
     if mel.dim() == 2:
         mel = mel.unsqueeze(0)  # (1, 80, T)
+
+    device = next(vocoder.parameters()).device
+    mel = mel.to(device)
 
     # ✅ SpeechBrain expects (B, 80, T) 그대로
     with torch.no_grad():
@@ -439,7 +446,7 @@ def synth_one_sample(batch, model, vocoder, model_config, preprocess_config):
         stats,
         ["Synthetized Spectrogram", "Ground-Truth Spectrogram"],
     )
-    vocoder = get_speechbrain_hifigan()
+    # vocoder = get_speechbrain_hifigan(mel_prediction.device)
     wav_reconstruction = speechbrain_vocode(vocoder,  mel_target)
     wav_prediction = speechbrain_vocode(vocoder, mel_prediction)
 
@@ -495,7 +502,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
     
     os.makedirs(path, exist_ok=True)
 
-    vocoder = get_speechbrain_hifigan()
+    # vocoder = get_speechbrain_hifigan(postnet_output.device)
 
     for i in range(len(predictions[0])):
         basename = basenames[i]
