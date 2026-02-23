@@ -5,8 +5,8 @@ dist_config:
   world_size: 1
 path:
   ckpt_path: "/mnt/hdd/kge/ICASSP2024_FS2-develop/output/ckpt/inter_2026"
-  log_path: "/mnt/hdd/kge/ICASSP2024_FS2-develop/output/ckpt/inter_2026"
-  result_path: "/mnt/hdd/kge/ICASSP2024_FS2-develop/output/ckpt/inter_2026"
+  log_path: "/mnt/hdd/kge/ICASSP2024_FS2-develop/output/log/inter_2026"
+  result_path: "/mnt/hdd/kge/ICASSP2024_FS2-develop/output/result/inter_2026"
 optimizer:
   batch_size: 32
   betas: [0.9, 0.98]

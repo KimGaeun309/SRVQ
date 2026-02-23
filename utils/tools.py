@@ -323,6 +323,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
         np.save(os.path.join(path, basename), mel.cpu())
 
     sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+    print("save path", os.path.join(path, "{}.wav".format(basename)))
     for wav, basename in zip(wav_predictions, basenames):
         wavfile.write(os.path.join(path, "{}.wav".format(basename)), sampling_rate, wav)
 
