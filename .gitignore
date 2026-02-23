@@ -12,8 +12,9 @@ hifigan/
 output/__pycache__/
 output/
 pretrained_models/
-__pycache__/
-utils/__pycache__/
+__pycache__/*
+utils/__pycache__/*
+model/__pycache__/*
 */*.pyc
 *.pyc
 *.code-workspace
