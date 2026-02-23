@@ -63,9 +63,9 @@ class FastSpeech2(nn.Module):
         hidden_dim = model_config["transformer"]["encoder_hidden"]
         self.intensity_proj = nn.Linear(1, hidden_dim)
 
-        # (권장) 초기에는 intensity 영향 거의 0으로 시작시키고 싶으면
-        nn.init.zeros_(self.intensity_proj.weight)
-        nn.init.zeros_(self.intensity_proj.bias)
+        # # (권장) 초기에는 intensity 영향 거의 0으로 시작시키고 싶으면
+        # nn.init.zeros_(self.intensity_proj.weight)
+        # nn.init.zeros_(self.intensity_proj.bias)
 
         self.padding_idx = len(symbols) + 1
 

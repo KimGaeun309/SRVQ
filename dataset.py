@@ -89,7 +89,7 @@ class Dataset(Dataset):
                     intensity.append(float(inten))
                 else:
                     n, s, e, t, r = parts
-                    intensity.append(0.0)   # fallback
+                    intensity.append(1.0)   # fallback
                 name.append(n)
                 speaker.append(s)
                 emotion.append(e)
@@ -163,7 +163,7 @@ class TextDatasetSingle(Dataset):
     def __init__(self, preprocess_config, text, phonemes, speaker, emotion):
         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
 
-        self.basename, self.speaker, self.emotion, self.text, self.raw_text = ["싱글_"+speaker+'_'+emotion+'_'+text[:50]], [speaker], [emotion], [phonemes], [text]
+        self.basename, self.speaker, self.emotion, self.text, self.raw_text, self.intensity = ["싱글_"+speaker+'_'+emotion+'_'+text[:50]], [speaker], [emotion], [phonemes], [text], [1.0]
 
         with open(
             os.path.join(
@@ -189,24 +189,30 @@ class TextDatasetSingle(Dataset):
         emotion_id = self.emotion_map[emotion]
         raw_text = self.raw_text[idx]
         phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
+        intensity =self.intensity[idx]
 
-        return (basename, speaker_id, emotion_id, phone, raw_text)
+        return (basename, speaker_id, emotion_id, phone, raw_text, intensity)
 
     def process_meta(self, filename):
         with open(filename, "r", encoding="utf-8") as f:
-            name = []
-            speaker = []
-            emotion = []
-            text = []
-            raw_text = []
+            name, speaker, emotion, text, raw_text, intensity = [], [], [], [], [], []
+
             for line in f.readlines():
-                n, s, e, t, r = line.strip("\n").split("|")
+                parts = line.strip().split("|")
+                
+                if len(parts) == 6:
+                    n, s, e, t, r, inten = parts
+                    intensity.append(float(inten))
+                else:
+                    n, s, e, t, r = line.strip("\n").split("|")
+                    intensity.append(1.0)
+
                 name.append(n)
                 speaker.append(s)
                 emotion.append(e)
                 text.append(t)
                 raw_text.append(r)
-            return name, speaker, emotion, text, raw_text
+            return name, speaker, emotion, text, raw_text, intensity
 
     def collate_fn(self, data):
         ids = [d[0] for d in data]
@@ -217,14 +223,15 @@ class TextDatasetSingle(Dataset):
         text_lens = np.array([text.shape[0] for text in texts])
 
         texts = pad_1D(texts)
+        intensities = np.array([d[5] for d in data], dtype=np.float32)
 
-        return ids, raw_texts, speakers, emotions, texts, text_lens, max(text_lens)
+        return ids, raw_texts, speakers, emotions, texts, text_lens, max(text_lens), intensities
 
 class TextDataset(Dataset):
     def __init__(self, filepath, preprocess_config):
         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
 
-        self.basename, self.speaker, self.emotion, self.text, self.raw_text = self.process_meta(
+        self.basename, self.speaker, self.emotion, self.text, self.raw_text, self.intensity = self.process_meta(
             filepath
         )
 
@@ -253,24 +260,31 @@ class TextDataset(Dataset):
         emotion_id = self.emotion_map[emotion]
         raw_text = self.raw_text[idx]
         phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
+        intensity = self.intensity[idx]
 
-        return (basename, speaker_id, emotion_id, phone, raw_text)
+        return (basename, speaker_id, emotion_id, phone, raw_text, intensity,)
 
     def process_meta(self, filename):
         with open(filename, "r", encoding="utf-8") as f:
-            name = []
-            speaker = []
-            emotion = []
-            text = []
-            raw_text = []
-            for line in f.readlines():
-                n, s, e, t, r = line.strip("\n").split("|")
+            name, speaker, emotion, text, raw_text, intensity = [], [], [], [], [], []
+
+            for line in f:
+                parts = line.strip().split("|")
+
+                if len(parts) == 6:
+                    n, s, e, t, r, inten = parts
+                    intensity.append(float(inten))
+                else:
+                    n, s, e, t, r = parts
+                    intensity.append(1.0)
+
                 name.append(n)
                 speaker.append(s)
                 emotion.append(e)
                 text.append(t)
                 raw_text.append(r)
-            return name, speaker, emotion, text, raw_text
+
+        return name, speaker, emotion, text, raw_text, intensity
 
     def collate_fn(self, data):
         ids = [d[0] for d in data]
@@ -281,8 +295,9 @@ class TextDataset(Dataset):
         text_lens = np.array([text.shape[0] for text in texts])
 
         texts = pad_1D(texts)
+        intensities = np.array([d[5] for d in data], dtype=np.float32)
 
-        return ids, raw_texts, speakers, emotions, texts, text_lens, max(text_lens)
+        return ids, raw_texts, speakers, emotions, texts, text_lens, max(text_lens), intensities
 
 
 if __name__ == "__main__":
