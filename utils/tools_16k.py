@@ -299,6 +299,19 @@ def to_device(data, device):
         src_lens = torch.from_numpy(src_lens).to(device)
 
         return (ids, raw_texts, speakers, emotions, texts, src_lens, max_src_len)
+    
+    if len(data) == 8:
+        (ids, raw_texts, speakers, emotions, texts, src_lens, max_src_len, intensities) = data
+
+        speakers = torch.from_numpy(speakers).long().to(device)
+        emotions = torch.from_numpy(emotions).long().to(device)
+        texts = torch.from_numpy(texts).long().to(device)
+        src_lens = torch.from_numpy(src_lens).long().to(device)
+
+        # intensities: (B,) float
+        intensities = torch.from_numpy(intensities).float().to(device)
+
+        return (ids, raw_texts, speakers, emotions, texts, src_lens, max_src_len, intensities)
 
     if len(data) == 10:
         (ids, raw_texts, speakers, emotions, texts, src_lens, max_src_len, mel, mel_len, max_mel_len) = data
@@ -483,12 +496,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
         mel_masks,
         src_lens,
         mel_lens,
-        style_embs,
-        style_pred_embs,
-        guided_loss,
-        vq_loss,
-        _, 
-        *rest,
+        *_,
     ) = predictions
 
     # ✅ GT mel 로딩 위한 preprocessed_path
@@ -585,7 +593,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
         torchaudio.save(os.path.join(path, f"{emotion}-{basename}-pred.wav"), pred_wav, sampling_rate)
 
         if gt_mel is not None:
-            gt_wav = speechbrain_vocode(vocoder, torch.from_numpy(gt_mel))
+            gt_wav = speechbrain_vocode(vocoder, torch.from_numpy(gt_mel).float().to(vocoder.device))
             torchaudio.save(os.path.join(path, f"{emotion}-{basename}-gt.wav"), gt_wav, sampling_rate)
 
         np.save(os.path.join(path, f"{emotion}-{basename}"), mel_prediction.detach().cpu().numpy())
