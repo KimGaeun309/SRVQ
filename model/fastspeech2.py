@@ -71,6 +71,30 @@ class FastSpeech2(nn.Module):
             init_size=self.max_source_positions + self.padding_idx + 1,
         )
 
+        self.neu_id = None
+
+        with open(
+            os.path.join(
+                preprocess_config["path"]["preprocessed_path"],
+                "emotions.json"
+            ),
+            "r",
+        ) as f:
+
+            emo_map = json.load(f)
+
+        # neutral key 자동 탐색 (case-insensitive)
+        for k, v in emo_map.items():
+            if k.lower() in ["neu", "neutral"]:
+                self.neu_id = v
+                break
+
+        if self.neu_id is None:
+            raise RuntimeError(
+                "Neutral emotion not found in emotions.json "
+                "(expected neu or Neutral)"
+            )
+
     def forward(
         self,
         speakers,
@@ -106,25 +130,42 @@ class FastSpeech2(nn.Module):
                 -1, max_src_len, -1
             )
 
-        # Add emotion category condition
         emo = self.emotion_emb(emotions)
+
         if not inference or intensity is None:
-            scale = torch.ones(
-                (emo.size(0), 1), device=emo.device, dtype=emo.dtype
-            )
+
+            mixed_emo = emo
+
         else:
+
             if not torch.is_tensor(intensity):
                 intensity = torch.tensor(intensity, device=emo.device)
-            if intensity.dim() == 0:
-                intensity = intensity.repeat(output.size(0), 1)  # (B,1)
-            if intensity.dim() == 1:
-                intensity = intensity.unsqueeze(1)  # (B,1)
-            scale = intensity.to(dtype=emo.dtype)   # (B,1)
 
-        emo = scale * emo
-        output = output + emo.unsqueeze(1).expand(
+            if intensity.dim() == 0:
+                intensity = intensity.repeat(output.size(0), 1)
+
+            if intensity.dim() == 1:
+                intensity = intensity.unsqueeze(1)
+
+            alpha = intensity.to(dtype=emo.dtype)  # (B,1)
+
+            # neutral embedding
+            neu_ids = torch.full(
+                (output.size(0),),
+                self.neu_id,
+                device=emo.device,
+                dtype=torch.long,
+            )
+
+            neu_emo = self.emotion_emb(neu_ids)
+
+            # 🔥 emotion mixing
+            mixed_emo = (1.0 - alpha) * neu_emo + alpha * emo
+
+        output = output + mixed_emo.unsqueeze(1).expand(
             -1, max_src_len, -1
         )
+
 
         # Variance Adaptor
         (

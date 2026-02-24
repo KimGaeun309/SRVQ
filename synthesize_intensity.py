@@ -121,7 +121,7 @@ def main():
     base_result_path = os.path.join(
         train_config["path"]["result_path"],
         str(args.restore_step),
-        "intensity"
+        "intensity_mix"
     )
     os.makedirs(base_result_path, exist_ok=True)
     print("[RESULT PATH]", base_result_path)
