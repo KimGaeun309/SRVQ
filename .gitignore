@@ -16,3 +16,4 @@ __pycache__/
 *.pyc
 output/__pycache__/
 */*.pyc
+history.txt
