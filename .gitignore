@@ -16,3 +16,7 @@ __pycache__/
 *.pyc
 output/__pycache__/
 */*.pyc
+eval_asr.py
+eval_f0rmse.py
+history.txt
+synthesize-gt.py
